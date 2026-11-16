@@ -155,7 +155,6 @@ if (MACOS OR LINUX)
               kblightwidget.cpp
               kbmanager.cpp
               kbmode.cpp
-              kbmodeeventmgr.cpp
               kbwindowinfo.cpp
               kbwindowinfomodel.cpp
               kbperf.cpp
@@ -213,7 +212,6 @@ if (MACOS OR LINUX)
               kblightwidget.h
               kbmanager.h
               kbmode.h
-              kbmodeeventmgr.h
               kbperf.h
               kbprofiledialog.h
               kbprofile.h
@@ -258,7 +256,6 @@ if (MACOS OR LINUX)
               kbanimwidget.ui
               kbbindwidget.ui
               kblightwidget.ui
-              kbmodeeventmgr.ui
               kbprofiledialog.ui
               kbwidget.ui
               keywidgetdebugger.ui
@@ -270,6 +267,28 @@ if (MACOS OR LINUX)
               mperfwidget.ui
               rebindwidget.ui
               settingswidget.ui)
+endif ()
+
+# The mode event manager is a Qt Quick dialog and needs Qt >= 6.6
+if (QT_VERSION VERSION_GREATER_EQUAL "6.6")
+    find_package(Qt6 REQUIRED COMPONENTS Quick QuickWidgets)
+    target_sources(
+        ckb-next
+            PRIVATE
+              kbmodeeventmgr.cpp
+              kbmodeeventmgr.h
+              qml/qml.qrc)
+    target_compile_definitions(
+        ckb-next
+            PRIVATE
+                USE_QML_EVENT_MGR)
+    target_link_libraries(
+        ckb-next
+            PRIVATE
+                Qt6::Quick
+                Qt6::QuickWidgets)
+else ()
+    message(STATUS "Mode event manager disabled (requires Qt >= 6.6)")
 endif ()
 if (MACOS)
     target_sources(

@@ -1,8 +1,6 @@
 #include "kbwindowinfomodel.h"
 #include "kbwindowinfo.h"
-#include <QMimeData>
 #include <QDebug>
-#include <algorithm>
 
 // Awful
 QString KbWindowInfoModel::caseSensitiveStr;
@@ -272,76 +270,4 @@ QStringList KbWindowInfoModel::choices(int column) const
 bool KbWindowInfoModel::isCellEnabled(int row, int column) const
 {
     return flags(index(row, column)).testFlag(Qt::ItemIsEnabled);
-}
-
-Qt::DropActions KbWindowInfoModel::supportedDropActions() const{
-    return Qt::MoveAction;
-}
-
-bool KbWindowInfoModel::dropMimeData(const QMimeData* data, Qt::DropAction action, int dstrow, int column, const QModelIndex& parent){
-    if(dstrow == -1 || action != Qt::MoveAction || !data->hasFormat("application/x-qabstractitemmodeldatalist"))
-        return false;
-    QByteArray e = data->data("application/x-qabstractitemmodeldatalist");
-    QDataStream stream(&e, QIODevice::ReadOnly);
-
-    // Read only the first item. We only need column 0 and there is only a single row selected.
-    int srcrow = -1;
-    int srccol = -1;
-    QMap<int,  QVariant> roledata;
-    stream >> srcrow >> srccol >> roledata;
-    if(srcrow < dstrow)
-        dstrow--;
-    if(srcrow == dstrow)
-        return false;
-
-    emit layoutAboutToBeChanged();
-#if QT_VERSION < QT_VERSION_CHECK(5, 6, 0)
-    QVector<KbWindowInfo::MatchPair>::iterator iter = wininfo->items.begin();
-    if (srcrow < dstrow)
-        std::rotate(iter + srcrow, iter + srcrow + 1, iter + dstrow + 1);
-    else
-        std::rotate(iter + dstrow, iter + srcrow, iter + srcrow + 1);
-#else
-    wininfo->items.move(srcrow, dstrow);
-#endif
-    emit layoutChanged();
-
-    return true;
-}
-
-void KbWindowInfoModelDropdownDelegate::setModelData(QWidget* editor, QAbstractItemModel* model,
-                                const QModelIndex& index) const
-{
-    QComboBox* e = qobject_cast<QComboBox*>(editor);
-    model->setData(index, e->currentIndex());
-}
-
-void KbWindowInfoModelDropdownDelegate::setEditorData(QWidget* editor, const QModelIndex& index) const {
-    QComboBox* e = qobject_cast<QComboBox*>(editor);
-    e->clear();
-    // Set all available options for each column
-    switch (index.column()) {
-    case KbWindowInfoModel::COL_OPERATOR:
-        e->addItem(KbWindowInfoModel::orStr);
-        e->addItem(KbWindowInfoModel::andStr);
-        break;
-    case KbWindowInfoModel::COL_CASE_INSENSITIVE:
-        e->addItem(KbWindowInfoModel::caseSensitiveStr);
-        e->addItem(KbWindowInfoModel::caseInsensitiveStr);
-        break;
-    case KbWindowInfoModel::COL_VERB:
-        e->addItem(KbWindowInfoModel::isStr);
-        e->addItem(KbWindowInfoModel::containsStr);
-        e->addItem(KbWindowInfoModel::startsStr);
-        e->addItem(KbWindowInfoModel::endsStr);
-        break;
-    case KbWindowInfoModel::COL_MATCH_TYPE:
-        e->addItem(KbWindowInfoModel::titleStr);
-        e->addItem(KbWindowInfoModel::pathStr);
-        e->addItem(KbWindowInfoModel::instanceStr);
-        e->addItem(KbWindowInfoModel::classStr);
-        break;
-    }
-    // data() returns the appropriate ints for EditRole
-    e->setCurrentIndex(index.data(Qt::EditRole).toInt());
 }

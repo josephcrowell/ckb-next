@@ -91,7 +91,7 @@ void ModeListWidget::setDevice(Kb* dev){
         emit customContextMenuRequested(p);
     });
 
-#ifndef USE_XCB_EWMH
+#if !defined(USE_XCB_EWMH) || !defined(USE_QML_EVENT_MGR)
     floatingView->horizontalHeader()->setSectionHidden(2, true);
     floatingView->hide();
 #endif

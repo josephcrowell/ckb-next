@@ -12,8 +12,11 @@
 #include "kbprofiledialog.h"
 #include "ui_kbwidget.h"
 #include "ui_kblightwidget.h"
+#ifdef USE_QML_EVENT_MGR
 #include "kbmodeeventmgr.h"
+#endif
 #include "mainwindow.h"
+#include <QDebug>
 #include <QItemSelectionModel>
 #include "modelisttablemodel.h"
 
@@ -285,7 +288,7 @@ void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
         // Can't delete modes if they're required by hardware
         del->setEnabled(false);
     QAction* moveup = new QAction(tr("Move Up"), this);
-#ifdef USE_XCB_EWMH
+#if defined(USE_XCB_EWMH) && defined(USE_QML_EVENT_MGR)
     QAction* focusevts = new QAction(tr("Manage Events"), this);
 #endif
     if(row == 0)
@@ -296,7 +299,7 @@ void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
     menu.addAction(rename);
     menu.addAction(duplicate);
     menu.addAction(del);
-#ifdef USE_XCB_EWMH
+#if defined(USE_XCB_EWMH) && defined(USE_QML_EVENT_MGR)
     menu.addSeparator();
     menu.addAction(focusevts);
     menu.addSeparator();
@@ -346,7 +349,7 @@ void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
         profileChanged();
         modeChanged();
     }
-#ifdef USE_XCB_EWMH
+#if defined(USE_XCB_EWMH) && defined(USE_QML_EVENT_MGR)
      else if(result == focusevts) {
         openEventMgr(currentProfile->currentMode());
     }
@@ -606,10 +609,19 @@ void KbWidget::switchToModeByFocus(XWindowInfo win) {
 }
 
 void KbWidget::openEventMgr(KbMode* mode) {
-    KbModeEventMgr* mgr = new KbModeEventMgr(this, mode);
+#ifdef USE_QML_EVENT_MGR
+    KbModeEventMgr* mgr = new KbModeEventMgr(this, mode->winInfo(), mode->name());
+    if(!mgr->isValid()) {
+        qWarning() << "Mode event manager failed to load";
+        delete mgr;
+        return;
+    }
     // We set this attribute so that we don't have to free it
     mgr->setAttribute(Qt::WA_DeleteOnClose);
     mgr->show();
+#else
+    Q_UNUSED(mode);
+#endif
 }
 
 void KbWidget::on_modesList_doubleClicked(const QModelIndex& index) {

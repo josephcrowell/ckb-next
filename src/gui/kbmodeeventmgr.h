@@ -1,41 +1,36 @@
 #ifndef KBMODEEVENTMGR_H
 #define KBMODEEVENTMGR_H
 
-#include <QWidget>
 #include <QDialog>
-#include "kbwindowinfo.h"
-#include <QTableWidgetItem>
-#include "kbwindowinfomodel.h"
 #include <QVector>
+#include "kbwindowinfo.h"
 
-namespace Ui {
-class KbModeEventMgr;
-}
+class QQuickWidget;
+class KbWindowInfoModel;
 
 class KbModeEventMgr : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit KbModeEventMgr(QWidget* parent, KbMode* m);
+    explicit KbModeEventMgr(QWidget* parent, KbWindowInfo* info, const QString& modeName);
     ~KbModeEventMgr();
+    bool isValid() const { return valid; }
     virtual void closeEvent(QCloseEvent* evt);
 
+protected:
+    void changeEvent(QEvent* evt) override;
+
 private slots:
-    void on_cancelBtn_clicked();
-    void on_okBtn_clicked();
-    void on_addbtn_clicked();
-    void on_removebtn_clicked();
-    void rowsChanged(const QModelIndex& parent, int first, int last);
-    void on_clearbtn_2_clicked();
+    void onQmlAccepted(bool enabled);
+    void onQmlRejected();
 
 private:
     KbWindowInfo* info;
-    Ui::KbModeEventMgr* ui;
-    void handleClose();
     KbWindowInfoModel* model;
+    QQuickWidget* quick;
     QVector<KbWindowInfo::MatchPair> backup;
-    KbWindowInfoModelDropdownDelegate* delegate;
+    bool valid = false;
 };
 
 #endif // KBMODEEVENTMGR_H
