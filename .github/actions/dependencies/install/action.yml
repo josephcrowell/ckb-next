@@ -7,6 +7,7 @@ inputs:
       eudev-dev
       pulseaudio-dev
       qt6-qtbase-dev
+      qt6-qtdeclarative-dev
       qt6-qt5compat-dev
       qt6-qttools-dev
       quazip-dev
@@ -24,6 +25,7 @@ inputs:
       libxcb
       xcb-util-wm
       qt6-base
+      qt6-declarative
       quazip-qt6
       qt6-tools
       qt6-wayland
@@ -39,6 +41,7 @@ inputs:
       qt6-linguist
       qt6-qttools-devel
       qt6-qtbase-devel
+      qt6-qtdeclarative-devel
       quazip-qt6-devel
       qt6-qtwayland-devel
       systemd-devel
@@ -93,6 +96,7 @@ inputs:
       build-essential
       cmake
       qt6-base-dev
+      qt6-declarative-dev
       libudev-dev
       zlib1g-dev
       libpulse-dev
