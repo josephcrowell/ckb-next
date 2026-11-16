@@ -5,6 +5,7 @@
 #include "kbwindowinfo.h"
 #include <QStyledItemDelegate>
 #include <QComboBox>
+#include <QStringList>
 
 class KbWindowInfoModel : public QAbstractTableModel
 {
@@ -25,9 +26,12 @@ public:
         COL_CASE_INSENSITIVE,
         COL_OPERATOR,
     };
-    void removeItem(const int row);
-    int addItem();
-    void clear();
+    Q_INVOKABLE void removeItem(const int row);
+    Q_INVOKABLE int addItem();
+    Q_INVOKABLE void clear();
+    Q_INVOKABLE void moveItem(int from, int gap);
+    Q_INVOKABLE QStringList choices(int column) const;
+    Q_INVOKABLE bool isCellEnabled(int row, int column) const;
     static QString caseSensitiveStr;
     static QString caseInsensitiveStr;
     static QString orStr;

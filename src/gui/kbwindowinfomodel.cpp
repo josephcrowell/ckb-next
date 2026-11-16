@@ -1,6 +1,7 @@
 #include "kbwindowinfomodel.h"
 #include "kbwindowinfo.h"
 #include <QMimeData>
+#include <QDebug>
 #include <algorithm>
 
 // Awful
@@ -195,6 +196,10 @@ bool KbWindowInfoModel::setData(const QModelIndex& index, const QVariant& value,
 
 void KbWindowInfoModel::removeItem(const int row)
 {
+    if(row < 0 || row >= rowCount()) {
+        qWarning() << "KbWindowInfoModel: removeItem out of range" << row;
+        return;
+    }
     emit beginRemoveRows(QModelIndex(), row, row);
     wininfo->items.remove(row);
     emit endRemoveRows();
@@ -227,9 +232,46 @@ int KbWindowInfoModel::addItem()
 
 void KbWindowInfoModel::clear()
 {
+    if(rowCount() == 0)
+        return;
     emit beginRemoveRows(QModelIndex(), 0, rowCount()-1);
     wininfo->items.clear();
     emit endRemoveRows();
+}
+
+// gap is the insertion point between rows, 0..rowCount()
+void KbWindowInfoModel::moveItem(int from, int gap)
+{
+    const int rows = rowCount();
+    if(from < 0 || from >= rows || gap < 0 || gap > rows || gap == from || gap == from + 1)
+        return;
+    if(!beginMoveRows(QModelIndex(), from, from, QModelIndex(), gap)) {
+        qWarning() << "KbWindowInfoModel: invalid move" << from << gap;
+        return;
+    }
+    wininfo->items.move(from, gap > from ? gap - 1 : gap);
+    endMoveRows();
+}
+
+QStringList KbWindowInfoModel::choices(int column) const
+{
+    switch(column) {
+    case COL_OPERATOR:
+        return {orStr, andStr};
+    case COL_CASE_INSENSITIVE:
+        return {caseSensitiveStr, caseInsensitiveStr};
+    case COL_VERB:
+        return {isStr, containsStr, startsStr, endsStr};
+    case COL_MATCH_TYPE:
+        return {titleStr, pathStr, instanceStr, classStr};
+    default:
+        return {};
+    }
+}
+
+bool KbWindowInfoModel::isCellEnabled(int row, int column) const
+{
+    return flags(index(row, column)).testFlag(Qt::ItemIsEnabled);
 }
 
 Qt::DropActions KbWindowInfoModel::supportedDropActions() const{
