@@ -139,6 +139,7 @@ if (MACOS OR LINUX)
               colorbutton.cpp
               colormap.cpp
               daemonwarndialog.cpp
+              devicecontroller.cpp
               extrasettingswidget.cpp
               fwupgradedialog.cpp
               gradientbutton.cpp
@@ -197,6 +198,7 @@ if (MACOS OR LINUX)
               colorbutton.h
               colormap.h
               daemonwarndialog.h
+              devicecontroller.h
               extrasettingswidget.h
               fwupgradedialog.h
               gradientbutton.h

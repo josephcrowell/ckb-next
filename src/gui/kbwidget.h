@@ -6,6 +6,7 @@
 #include <QWidget>
 #include "kb.h"
 #include "batterysystemtrayicon.h"
+#include "devicecontroller.h"
 #include "xcb/xwindowdetector.h"
 #include "modelisttablemodel.h"
 #include "ui_kbwidget.h"
@@ -56,7 +57,7 @@ private:
         return ui->pollRateBox->count() - poll - 1;
     }
 
-    KbMode* prevmode;
+    DeviceController* controller;
     void openEventMgr(KbMode* mode);
     // These profileAboutToChange/profileChanged functions should be removed at some point
     // and have all the work from the context menu done in the model
@@ -86,7 +87,6 @@ private slots:
     void switchToProfile(const QString& profile);
     void switchToMode(const QString& mode);
     void on_pollRateBox_currentIndexChanged(int arg1);
-    void switchToModeByFocus(XWindowInfo win);
     void on_modesList_doubleClicked(const QModelIndex& index);
     void on_modesList_clicked(const QModelIndex& index);
 };
