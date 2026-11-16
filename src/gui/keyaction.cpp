@@ -4,12 +4,13 @@
 #include "kbanim.h"
 #include "kbprofile.h"
 #include "monotonicclock.h"
+#include <QPointer>
 #include <QUrl>
+#include <QWindow>
 #include <cstring>
 #include <cstdio>
 #ifdef USE_XCB
-#include "mainwindow.h"
-#include <QWindow>
+#include <QApplication>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -495,6 +496,12 @@ void KeyAction::keyEvent(KbBind* bind, bool down){
 // From main.cpp
 extern const char* DISPLAY;
 
+static QPointer<QWindow> screenCursorWindow;
+
+void KeyAction::setScreenCursorWindow(QWindow* window){
+    screenCursorWindow = window;
+}
+
 QString KeyAction::getDisplayForScreenCursor(){
     QString displaystr;
 #ifdef USE_XCB
@@ -510,11 +517,10 @@ QString KeyAction::getDisplayForScreenCursor(){
 #endif
 
     // First, get the window id
-    const MainWindow* const mw = MainWindow::mainWindow;
-    if(!mw || !mw->windowHandle() || !conn)
+    if(!screenCursorWindow || !conn)
         return displaystr;
 
-    xcb_window_t ckb_xcb_id = static_cast<xcb_window_t>(mw->windowHandle()->winId());
+    xcb_window_t ckb_xcb_id = static_cast<xcb_window_t>(screenCursorWindow->winId());
 
     // Check if the cursor is in the same screen as the ckb-next window
     xcb_query_pointer_reply_t* ptr_reply = xcb_query_pointer_reply(conn, xcb_query_pointer(conn, ckb_xcb_id), nullptr);

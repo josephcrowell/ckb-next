@@ -7,6 +7,7 @@
 
 class KbBind;
 class KbAnim;
+class QWindow;
 
 // Class for managing an action associated with a keypress
 
@@ -20,6 +21,9 @@ public:
     inline operator QString ()  const { return _value; }
     // Empty action
     explicit KeyAction(QObject* parent = nullptr);
+
+    // Window used to find the screen under the cursor for program actions, set by the UI
+    static void setScreenCursorWindow(QWindow* window);
 
     // No action
     static inline QString   noAction()    { return QString(); }

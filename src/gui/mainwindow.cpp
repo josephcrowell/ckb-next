@@ -1,12 +1,14 @@
 #include "ckbsettings.h"
 #include "kbmanager.h"
 #include "kbfirmware.h"
+#include "keyaction.h"
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <cstdlib>
 #include <QFileInfo>
 #include <QSharedMemory>
 #include <QShortcut>
+#include <QShowEvent>
 #include <QMessageBox>
 #include <QMenuBar>
 #include <unistd.h>
@@ -349,6 +351,11 @@ void MainWindow::showFwUpdateNotification(QWidget* widget, CkbVersionNumber vers
         w->showFwUpdate();
     }
     isShowing = false;
+}
+
+void MainWindow::showEvent(QShowEvent* event){
+    KeyAction::setScreenCursorWindow(windowHandle());
+    QMainWindow::showEvent(event);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event){

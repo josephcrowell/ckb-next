@@ -45,6 +45,7 @@ private:
     QMenu*              trayIconMenu;
     CkbSystemTrayIcon*  trayIcon;
     void closeEvent(QCloseEvent *event);
+    void showEvent(QShowEvent* event);
 
 #if defined(Q_OS_MACOS) && !defined(OS_MAC_LEGACY)
     QTimer*             catalinaTimer;
