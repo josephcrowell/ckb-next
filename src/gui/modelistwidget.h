@@ -3,6 +3,7 @@
 
 #include <QTableView>
 #include <QResizeEvent>
+#include <QStyledItemDelegate>
 #include <QTimer>
 #include "kb.h"
 #include "modelisttablemodel.h"
@@ -30,7 +31,16 @@ private:
     bool ignoreFocusLoss;
 };
 
-class FloatingDelegate : public QStyledItemDelegate
+// Colours the item background from ModeListTableModel's HighlightedRole and ActiveFocusRole
+class ModeListDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+protected:
+    void initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const override;
+};
+
+class FloatingDelegate : public ModeListDelegate
 {
 protected:
     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const;

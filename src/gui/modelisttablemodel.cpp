@@ -1,9 +1,6 @@
 #include "modelisttablemodel.h"
 #include <QIcon>
 #include <QFont>
-#include <QApplication>
-#include <QStyle>
-#include <QStyledItemDelegate>
 
 ModeListTableModel::ModeListTableModel(Kb *dev, QObject* parent) : QAbstractTableModel(parent), device(dev),
     highlightedRow(-1), _hasFocus(false)
@@ -96,11 +93,10 @@ QVariant ModeListTableModel::data(const QModelIndex& index, int role) const{
         QFont font;
         font.setItalic(true);
         return font;
-    } else if(role == Qt::BackgroundRole) {
-        if(col == COL_EVENT_ICON && row == activeRow && _hasFocus)
-            return QApplication::style()->standardPalette().highlight();
-        else if(row == highlightedRow)
-            return QApplication::style()->standardPalette().window();
+    } else if(role == ActiveFocusRole) {
+        return col == COL_EVENT_ICON && row == activeRow && _hasFocus;
+    } else if(role == HighlightedRole) {
+        return row == highlightedRow;
     }
     return QVariant();
 }

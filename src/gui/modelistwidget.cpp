@@ -20,6 +20,7 @@ void ModeListWidget::setDevice(Kb* dev){
     modelptr = new ModeListTableModel(dev, this);
     device = dev;
     setModel(modelptr);
+    setItemDelegate(new ModeListDelegate(this));
     // Highlight the new item on reorder
     connect(modelptr, &QAbstractItemModel::layoutChanged, this, [this](){
         const int index = device->currentProfile()->indexOf(device->currentMode());
@@ -140,6 +141,14 @@ void ModeListWidget::updateFloatingGeometry() {
     floatingView->setGeometry(horizontalHeader()->width() + frameWidth() - width,
                               frameWidth(), width,
                               viewport()->height() + horizontalHeader()->height());
+}
+
+void ModeListDelegate::initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const{
+    QStyledItemDelegate::initStyleOption(option, index);
+    if(index.data(ModeListTableModel::ActiveFocusRole).toBool())
+        option->backgroundBrush = QApplication::style()->standardPalette().highlight();
+    else if(index.data(ModeListTableModel::HighlightedRole).toBool())
+        option->backgroundBrush = QApplication::style()->standardPalette().window();
 }
 
 void FloatingDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const{
