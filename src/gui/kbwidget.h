@@ -5,6 +5,7 @@
 #include <QTableWidgetItem>
 #include <QWidget>
 #include "kb.h"
+#include "batterysystemtrayicon.h"
 #include "xcb/xwindowdetector.h"
 #include "modelisttablemodel.h"
 #include "ui_kbwidget.h"
@@ -42,6 +43,8 @@ public slots:
 private:
     Ui::KbWidget *ui;
     quint64 lastAutoSave;
+    // Battery tray icon for devices with the "battery" feature, owned by this widget
+    BatteryStatusTrayIcon* batteryIcon = nullptr;
 
     KbMode* currentMode;
 

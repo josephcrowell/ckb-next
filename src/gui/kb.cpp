@@ -36,8 +36,9 @@ static inline Kb::pollrate_t stringToPollrate(const QString& str){
 
 Kb::Kb(QObject *parent, const QString& path) :
     QThread(parent), features(QStringList()), pollrate(POLLRATE_UNKNOWN), maxpollrate(POLLRATE_UNKNOWN), monochrome(false), hwload(false), adjrate(false), firmware(),
-    batteryTimer(nullptr), batteryIcon(nullptr), showBatteryIndicator(false), devpath(path), cmdpath(path + "/cmd"), notifyPath(path + "/notify1"), macroPath(path + "/notify2"),
+    batteryTimer(nullptr), devpath(path), cmdpath(path + "/cmd"), notifyPath(path + "/notify1"), macroPath(path + "/notify2"),
     _currentProfile(nullptr), _currentMode(nullptr), _model(KeyMap::NO_MODEL), batteryLevel(0), batteryStatus(BatteryStatus::BATT_STATUS_UNKNOWN),
+    _showBatteryIndicator(false),
     _hwProfile(nullptr), prevProfile(nullptr), prevMode(nullptr),
     cmd(cmdpath), notifyNumber(1), macroNumber(2), _needsSave(false), _layout(KeyMap::NO_LAYOUT), _maxDpi(0),
     deviceIdleTimer()
@@ -146,15 +147,11 @@ Kb::Kb(QObject *parent, const QString& path) :
     cmd.flush();
 
     if(features.contains("battery")){
-        batteryIcon = new BatteryStatusTrayIcon(usbModel, this);
         updateBattery();
         batteryTimer = new QTimer(this);
         connect(batteryTimer, &QTimer::timeout, this, &Kb::updateBattery);
-        connect(this, &Kb::batteryChanged, batteryIcon, &BatteryStatusTrayIcon::setBattery);
         if (this->currentPerf())
             connect(this, &Kb::batteryChangedLed, this->currentPerf(), &KbPerf::setBattery);
-        if(showBatteryIndicator)
-            batteryIcon->show();
         batteryTimer->setInterval(10000);
         batteryTimer->start();
     }
@@ -206,7 +203,6 @@ Kb::~Kb(){
     save();
 
     delete batteryTimer;
-    delete batteryIcon;
 
     // remove the notify channel from the list of notifyPaths.
     ///< \todo I don't think, that notifypaths is used somewhere. So why do we have it?
@@ -328,7 +324,7 @@ void Kb::load(){
                 newCurrentProfile = profile;
         }
     }
-    showBatteryIndicator = settings.value("batteryIndicator", true).toBool();
+    _showBatteryIndicator = settings.value("batteryIndicator", true).toBool();
     if(newCurrentProfile)
         setCurrentProfile(newCurrentProfile);
     else {
@@ -375,7 +371,12 @@ void Kb::save(){
     settings.setValue("CurrentProfile", currentGuid);
     settings.setValue("Profiles", guids.trimmed());
     settings.setValue("hwLayout", KeyMap::getLayout(_layout));
-    settings.setValue("batteryIndicator", showBatteryIndicator);
+    settings.setValue("batteryIndicator", _showBatteryIndicator);
+}
+
+void Kb::setShowBatteryIndicator(bool show){
+    _showBatteryIndicator = show;
+    emit showBatteryIndicatorChanged(show);
 }
 
 void Kb::autoSave(){

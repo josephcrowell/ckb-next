@@ -573,6 +573,6 @@ int KbPerf::getDpiIdx(){
 
 void KbPerf::setBattery(uint battery, BatteryStatus charging)
 {
-    batteryLevel = BatteryStatusTrayIcon::getBatteryString(battery);
+    batteryLevel = batteryLevelIndex(battery);
     batteryCharging = charging;
 }

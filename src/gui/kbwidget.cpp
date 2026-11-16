@@ -80,6 +80,10 @@ KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector
     // If the device is supports it, show the battery
     if(device->features.contains("battery")){
         connect(device, &Kb::batteryChanged, this, &KbWidget::updateBattery);
+        // The device's battery tray icon, shown or hidden through the check box below
+        batteryIcon = new BatteryStatusTrayIcon(device->usbModel, this);
+        connect(device, &Kb::batteryChanged, batteryIcon, &BatteryStatusTrayIcon::setBattery);
+        connect(device, &Kb::showBatteryIndicatorChanged, batteryIcon, &BatteryStatusTrayIcon::setVisible);
     } else {
         ui->batteryLabel->hide();
         ui->batteryStatusLabel->hide();
@@ -259,13 +263,8 @@ void KbWidget::batteryTrayBox_stateChanged(int state){
 #endif
     if(!device->features.contains("battery"))
         return;
-    device->showBatteryIndicator = state != CHECK_VALUE_UNCHECKED;
+    device->setShowBatteryIndicator(state != CHECK_VALUE_UNCHECKED);
     device->needsSave();
-    if(device->showBatteryIndicator){
-        device->batteryIcon->show();
-    } else {
-        device->batteryIcon->hide();
-    }
 }
 
 void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
@@ -380,7 +379,7 @@ void KbWidget::devUpdate(){
     bool block = ui->pollRateBox->blockSignals(true);
     ui->pollRateBox->setCurrentIndex(getPollRateBoxIdx(device->pollrate));
     ui->pollRateBox->blockSignals(block);
-    ui->batteryTrayBox->setChecked(device->showBatteryIndicator);
+    ui->batteryTrayBox->setChecked(device->showBatteryIndicator());
 }
 
 void KbWidget::updateBattery(uint battery, BatteryStatus charging){

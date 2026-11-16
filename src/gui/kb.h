@@ -10,7 +10,7 @@
 #include "kbprofile.h"
 #include <QElapsedTimer>
 #include <limits>
-#include "batterysystemtrayicon.h"
+#include "batterystatus.h"
 #include "ckbversionnumber.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -146,10 +146,13 @@ public:
     // Battery polling timer
     QTimer* batteryTimer;
 
-    // Battery status icon
-    BatteryStatusTrayIcon* batteryIcon;
+    // Battery state, as last reported by the daemon
+    inline uint currentBatteryLevel() const { return batteryLevel; }
+    inline BatteryStatus currentBatteryStatus() const { return batteryStatus; }
 
-    bool showBatteryIndicator;
+    // Whether the UI shows a battery tray icon for this device (saved with the device)
+    inline bool showBatteryIndicator() const { return _showBatteryIndicator; }
+    void setShowBatteryIndicator(bool show);
 
     //////////
     /// For usage with macro definions, these two params must only be readable.
@@ -188,6 +191,7 @@ signals:
     void profileRenamed();
     void batteryChanged(uint batteryLevel, BatteryStatus batteryStatus);
     void batteryChangedLed(uint batteryLevel, BatteryStatus batteryStatus);
+    void showBatteryIndicatorChanged(bool show);
 
     void profileChanged();
     void profileAboutToChange();
@@ -247,6 +251,7 @@ private:
 
     uint batteryLevel;
     BatteryStatus batteryStatus;
+    bool _showBatteryIndicator;
 
     // Indicator light state
     bool iState[KbPerf::HW_I_COUNT];

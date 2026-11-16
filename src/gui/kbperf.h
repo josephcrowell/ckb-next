@@ -6,7 +6,7 @@
 #include "ckbsettings.h"
 #include "keymap.h"
 #include "media.h"
-#include "batterysystemtrayicon.h"
+#include "batterystatus.h"
 
 class KbMode;
 class KbBind;

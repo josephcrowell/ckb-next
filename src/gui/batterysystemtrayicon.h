@@ -1,16 +1,9 @@
 #ifndef BATTERYSYSTEMTRAYICON_H
 #define BATTERYSYSTEMTRAYICON_H
 #include "ckbsystemtrayicon.h"
+#include "batterystatus.h"
 #include <QAction>
 #include <QMenu>
-
-enum BatteryStatus {
-    BATT_STATUS_UNKNOWN,
-    BATT_STATUS_CHARGING,
-    BATT_STATUS_DISCHARGING,
-    BATT_STATUS_CHARGED,
-    BATT_STATUS_INVALID, // Used for safety checks
-};
 
 class BatteryStatusTrayIcon : public CkbSystemTrayIcon {
     Q_OBJECT
@@ -41,15 +34,7 @@ class BatteryStatusTrayIcon : public CkbSystemTrayIcon {
     static_assert(sizeof(BATTERY_STATUS_VALUES)/sizeof(*BATTERY_STATUS_VALUES) == BATT_STATUS_INVALID, "BatteryStatus enum is not the same length as BATTERY_STATUS_VALUES");
         const static QString batTrayLevel;
         const static QString batTrayStatus;
-        static int getBatteryString(uint bat) {
-            if(bat > 50)
-                return 4;
-            if(bat > 30)
-                return 3;
-            if(bat > 15)
-                return 2;
-            return 1;
-        }
+        static int getBatteryString(uint bat) { return batteryLevelIndex(bat); }
     public slots:
         void setBattery(uint battery, BatteryStatus charging);
     private:

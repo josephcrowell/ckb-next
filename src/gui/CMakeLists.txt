@@ -185,6 +185,7 @@ if (MACOS OR LINUX)
               animdetailsdialog.h
               animscript.h
               animsettingdialog.h
+              batterystatus.h
               ckbsettings.h
               ckbsettingswriter.h
               ckbsystemquirks.h
