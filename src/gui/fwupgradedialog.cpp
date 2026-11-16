@@ -3,7 +3,7 @@
 #include "fwupgradedialog.h"
 #include "kbfirmware.h"
 #include "ui_fwupgradedialog.h"
-#include "mainwindow.h"
+#include "appcontroller.h"
 
 // IDs for verifying firmware suitability
 struct KbId {
@@ -98,7 +98,7 @@ int FwUpgradeDialog::exec(){
         ui->actionButton->setEnabled(false);
         show();
         // This can take a while
-        blob = MainWindow::mainWindow->kbfw->dataForBoard(productID);
+        blob = AppController::instance()->firmware()->dataForBoard(productID);
         // Check validity
         CkbVersionNumber newV = verifyFw(blob, productID);
         if(newV.isNull()){

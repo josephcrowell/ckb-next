@@ -4,6 +4,7 @@
 #include <QMessageBox>
 #include <QUrl>
 #include <QTimer>
+#include "appcontroller.h"
 #include "ckbsettings.h"
 #include "fwupgradedialog.h"
 #include "kbfirmware.h"
@@ -404,10 +405,10 @@ void KbWidget::on_tabWidget_currentChanged(int index){
 }
 
 void KbWidget::updateFwButton(){
-    if(!MainWindow::mainWindow->kbfw->hasDownloaded())
+    if(!AppController::instance()->firmware()->hasDownloaded())
         ui->fwUpdButton->setText(tr("Check for updates"));
     else {
-        CkbVersionNumber newVersion = MainWindow::mainWindow->kbfw->versionForBoard(device->productID);
+        CkbVersionNumber newVersion = AppController::instance()->firmware()->versionForBoard(device->productID);
         const CkbVersionNumber& oldVersion = device->firmware.app;
         if(newVersion.isNull() || newVersion <= oldVersion)
             ui->fwUpdButton->setText(tr("Up to date"));
@@ -428,11 +429,11 @@ void KbWidget::on_fwUpdButton_clicked(){
     // If alt is pressed, ignore upgrades and go straight to the manual prompt
     if(!(qApp->keyboardModifiers() & Qt::AltModifier)){
         // Check version numbers
-        if(!MainWindow::mainWindow->kbfw->hasDownloaded()){
+        if(!AppController::instance()->firmware()->hasDownloaded()){
             ui->fwUpdButton->setText(tr("Checking..."));
             ui->fwUpdButton->setEnabled(false);
         }
-        const CkbVersionNumber newVersion = MainWindow::mainWindow->kbfw->versionForBoard(device->productID, true);
+        const CkbVersionNumber newVersion = AppController::instance()->firmware()->versionForBoard(device->productID, true);
         const CkbVersionNumber& oldVersion = device->firmware.app;
         ui->fwUpdButton->setEnabled(true);
         updateFwButton();

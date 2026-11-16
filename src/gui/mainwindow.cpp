@@ -13,12 +13,9 @@
 #include <QMenuBar>
 #include <unistd.h>
 #include <ckbnextconfig.h>
-#include <sys/socket.h>
-#include <signal.h>
 #include <QProcess>
+#include "appcontroller.h"
 #include "monotonicclock.h"
-#include "xcb/xwindowdetector.h"
-XWindowDetector* windowDetector = nullptr;
 
 #ifndef DISABLE_UPDATER
 #include "ckbupdater.h"
@@ -31,8 +28,6 @@ XWindowDetector* windowDetector = nullptr;
 
 extern QSharedMemory appShare;
 extern QString devpath;
-
-int MainWindow::signalHandlerFd[2] = {0, 0};
 
 MainWindow* MainWindow::mainWindow = nullptr;
 
@@ -125,10 +120,8 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
     ui->setupUi(this);
     mainWindow = this;
 
-    kbfw = new KbFirmware();
-
-    // Start device manager
-    KbManager::init(QApplication::applicationVersion());
+    app = new AppController(this);
+    app->init();
     connect(KbManager::kbManager(), SIGNAL(kbConnected(Kb*)), this, SLOT(addDevice(Kb*)));
     connect(KbManager::kbManager(), SIGNAL(kbDisconnected(Kb*)), this, SLOT(removeDevice(Kb*)));
     connect(KbManager::kbManager(), SIGNAL(versionUpdated()), this, SLOT(updateVersion()));
@@ -167,16 +160,6 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
     settingsWidget->setVersion(KbManager::ckbGuiVersion());
 
     DaemonWarnDialog *warnDialog = new DaemonWarnDialog(mainWindow);
-
-    // Set up signal handler
-    socketpair(AF_UNIX, SOCK_STREAM, 0, MainWindow::signalHandlerFd);
-
-    sigNotifier = new QSocketNotifier(MainWindow::signalHandlerFd[1], QSocketNotifier::Read, this);
-    connect(sigNotifier, &QSocketNotifier::activated, this, &MainWindow::QSignalHandler);
-
-    signal(SIGINT, MainWindow::PosixSignalHandler);
-    signal(SIGTERM, MainWindow::PosixSignalHandler);
-    signal(SIGHUP, MainWindow::PosixSignalHandler);
 
     // check, whether daemon is running
     // the daemon creates the root device path on initialization and thus it
@@ -219,13 +202,8 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
         QTimer::singleShot(2000, this, &MainWindow::appleRequestHidTimer);
     }
 #endif
-#ifdef USE_XCB_EWMH
-    qRegisterMetaType<XWindowInfo>("XWindowInfo");
-    windowDetector = new XWindowDetector();
-    windowDetector->start();
-#endif
 
-    KbManager::kbManager()->scanKeyboards();
+    app->startScan();
 }
 
 void MainWindow::checkForCkbUpdates(){
@@ -247,7 +225,7 @@ void MainWindow::addDevice(Kb* device){
             return;
     }
     // Add the keyboard
-    KbWidget* widget = new KbWidget(this, device, windowDetector);
+    KbWidget* widget = new KbWidget(this, device, app->windowDetector());
     kbWidgets.append(widget);
     // Add to tabber; switch to this device if the user is on the settings screen
     int count = ui->tabWidget->count();
@@ -321,7 +299,7 @@ void MainWindow::checkFwUpdates(){
         return;
     foreach(KbWidget* w, kbWidgets){
         // Display firmware upgrade notification if a new version is available
-        CkbVersionNumber version = kbfw->versionForBoard(w->device->productID);
+        CkbVersionNumber version = app->firmware()->versionForBoard(w->device->productID);
         if(version > w->device->firmware.app){
             if(w->hasShownNewFW)
                 continue;
@@ -405,7 +383,7 @@ void MainWindow::timerTick(){
     }
     // Check for firmware updates (when appropriate)
     if(!CkbSettings::get("Program/DisableAutoFWCheck").toBool()){
-        kbfw->checkUpdates();
+        app->firmware()->checkUpdates();
         checkFwUpdates();
     }
     // Poll for setting updates
@@ -447,7 +425,7 @@ void MainWindow::stateChange(Qt::ApplicationState state){
 }
 
 void MainWindow::quitApp(){
-    qApp->quit();
+    app->quit();
 }
 
 QIcon MainWindow::getIcon() {
@@ -485,42 +463,8 @@ MainWindow::~MainWindow(){
     foreach(KbWidget* w, kbWidgets)
         delete w;
     kbWidgets.clear();
-    KbManager::stop();
-    deinitAudioSubsystem();
-    delete kbfw;
-    CkbSettings::cleanUp();
-#ifdef USE_XCB_EWMH
-    if(windowDetector){
-        windowDetector->terminateEventLoop();
-        windowDetector->wait();
-    }
-#endif
+    app->shutdown();
     delete ui;
-}
-
-void MainWindow::QSignalHandler(){
-    sigNotifier->setEnabled(false);
-    int sig = -1;
-    int ret = read(signalHandlerFd[1], &sig, sizeof(sig));
-
-    if(ret == -1){
-        qDebug() << "Error on QSignalHandler read";
-        return;
-    }
-
-    qDebug() << "\nSignal" << sig << "caught. Quitting...";
-    if(sig == SIGHUP){
-        // Restart, but with a delay
-        QProcess::startDetached(QCoreApplication::applicationFilePath(), QStringList() << "-b" << "-d" << "-s");
-    }
-    this->quitApp();
-    sigNotifier->setEnabled(true);
-}
-
-void MainWindow::PosixSignalHandler(int signal){
-    int ret = write(MainWindow::signalHandlerFd[0], &signal, sizeof(signal));
-    if(ret == -1)
-        qDebug() << "Error on PosixSignalHandler write";
 }
 
 void MainWindow::checkedForNewVer(const QString& ver, const QString& changelog){

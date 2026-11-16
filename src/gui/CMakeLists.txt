@@ -128,6 +128,7 @@ if (MACOS OR LINUX)
               animdetailsdialog.cpp
               animscript.cpp
               animsettingdialog.cpp
+              appcontroller.cpp
               batterysystemtrayicon.cpp
               ckbsettings.cpp
               ckbsettingswriter.cpp
@@ -186,6 +187,7 @@ if (MACOS OR LINUX)
               animdetailsdialog.h
               animscript.h
               animsettingdialog.h
+              appcontroller.h
               batterystatus.h
               ckbsettings.h
               ckbsettingswriter.h

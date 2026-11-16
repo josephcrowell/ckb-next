@@ -8,9 +8,10 @@
 #include <QTimer>
 #include "kbwidget.h"
 #include "settingswidget.h"
-#include <QSocketNotifier>
 #include "ckbsystemtrayicon.h"
 #include "kbfirmware.h"
+
+class AppController;
 
 #ifndef DISABLE_UPDATER
 #include "ckbupdater.h"
@@ -31,13 +32,11 @@ public:
     static MainWindow* mainWindow;
 
     void toggleTrayIcon(bool visible);
-    static int signalHandlerFd[2];
-    static void PosixSignalHandler(int signal);
     void syncTrayIcon();
     void setTabsEnabled(bool e);
-    KbFirmware* kbfw;
 
 private:
+    AppController* app;
     SettingsWidget* settingsWidget;
     QList<KbWidget*> kbWidgets;
     QAction* restoreAction;
@@ -80,7 +79,6 @@ private slots:
     void checkFwUpdates();
     void timerTick();
     void showFwUpdateNotification(QWidget* widget, CkbVersionNumber version);
-    void QSignalHandler();
     void checkedForNewVer(const QString& ver, const QString& changelog);
 #if defined(Q_OS_MACOS) && !defined(OS_MAC_LEGACY)
     void appleRequestHidTimer();
@@ -88,7 +86,6 @@ private slots:
     void iconClicked(QSystemTrayIcon::ActivationReason reason);
 private:
     Ui::MainWindow *ui;
-    QSocketNotifier* sigNotifier;
 #ifndef DISABLE_UPDATER
     CkbUpdater* updater;
 #endif
