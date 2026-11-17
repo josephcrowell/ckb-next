@@ -5,8 +5,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <cstdlib>
-#include <QFileInfo>
-#include <QSharedMemory>
 #include <QShortcut>
 #include <QShowEvent>
 #include <QMessageBox>
@@ -26,8 +24,6 @@
 #include "daemonwarndialog.h"
 
 
-extern QSharedMemory appShare;
-extern QString devpath;
 
 MainWindow* MainWindow::mainWindow = nullptr;
 
@@ -121,12 +117,13 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
     mainWindow = this;
 
     app = new AppController(this);
+    app->setWindowVisibleCheck([this](){ return isVisible(); });
     app->init();
     connect(KbManager::kbManager(), SIGNAL(kbConnected(Kb*)), this, SLOT(addDevice(Kb*)));
     connect(KbManager::kbManager(), SIGNAL(kbDisconnected(Kb*)), this, SLOT(removeDevice(Kb*)));
-    connect(KbManager::kbManager(), SIGNAL(versionUpdated()), this, SLOT(updateVersion()));
     connect(KbManager::scanTimer(), SIGNAL(timeout()), this, SLOT(timerTick()));
-    connect(this, &MainWindow::dimAllLightsForIdleCLI, KbManager::kbManager(), &KbManager::forceDimLights);
+    connect(app, &AppController::showWindowRequested, this, &MainWindow::showWindow);
+    connect(app, &AppController::firmwareUpdateAvailable, this, &MainWindow::firmwareUpdateAvailable);
 
     // Set up tray icon
     restoreAction = new QAction(tr("Restore"), this);
@@ -158,20 +155,13 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
 
     ui->tabWidget->addTab(settingsWidget = new SettingsWidget(this), QString(tr("Settings")));
     settingsWidget->setVersion(KbManager::ckbGuiVersion());
+    connect(app, &AppController::statusTextChanged, settingsWidget, &SettingsWidget::setStatus);
 
     DaemonWarnDialog *warnDialog = new DaemonWarnDialog(mainWindow);
 
-    // check, whether daemon is running
-    // the daemon creates the root device path on initialization and thus it
-    // can be assumed, that the daemon is not running if doesn't exist
-    // `.arg(0)` is necessary to interpolate the correct suffix into the path
-    // see `./kbmanager.cpp` for details
-    QFileInfo rootDevPath(devpath.arg(0));
-    if (!(rootDevPath.exists()  || silent)) {
-        // set settings widget's status
+    if(!app->checkDaemon(silent)){
         // show the main window (otherwise only the dialog will be visible)
         // finally show the dialog
-        settingsWidget->setStatus(tr("The ckb-next daemon is not running."));
         showWindow();
         warnDialog->open();
     }
@@ -232,8 +222,6 @@ void MainWindow::addDevice(Kb* device){
     ui->tabWidget->insertTab(count - 1, widget, widget->name());
     if(ui->tabWidget->currentIndex() == count)
         ui->tabWidget->setCurrentIndex(count - 1);
-    // Update connected device count
-    updateVersion();
 }
 
 void MainWindow::removeDevice(Kb* device){
@@ -246,71 +234,17 @@ void MainWindow::removeDevice(Kb* device){
             w->deleteLater();
         }
     }
-    // Update connected device count
-    updateVersion();
 }
 
-void MainWindow::updateVersion(){
-    const CkbVersionNumber& daemonVersion = KbManager::ckbDaemonVersion();
-    if(daemonVersion.isNull()){
-        settingsWidget->setStatus(tr("Driver inactive"));
-        return;
-    }
-    int count = kbWidgets.count();
-    // Warn if the daemon version doesn't match the GUI
-    QString daemonWarning;
-    if(!daemonVersion.isEqualVerStr(KbManager::ckbGuiVersion()))
-        daemonWarning = tr("<br /><br /><b>Warning:</b> Driver version mismatch (") + daemonVersion.toString() + tr("). Please upgrade ckb-next") + QString(KbManager::ckbDaemonVersion() > KbManager::ckbGuiVersion() ? "" : "-daemon") + tr(". If the problem persists, try rebooting.");
-    if(count == 0){
-#if defined(Q_OS_MACOS) && !defined(OS_MAC_LEGACY)
-        QProcess kextstat;
-        kextstat.start("kextstat", QStringList() << "-l" << "-b" << "org.pqrs.driver.Karabiner.VirtualHIDDevice.v060800");
-
-        if(!kextstat.waitForFinished())
-            qDebug() << "Kextstat error";
-
-        QString kextstatOut(kextstat.readAll());
-        if(kextstatOut.isEmpty())
-            daemonWarning.append(tr("<br /><b>Warning:</b> System Extension by \"Fumihiko Takayama\" is not allowed in Security & Privacy. Please allow it and then unplug and replug your devices."));
-        if(is_catalina_or_higher())
-            daemonWarning.append(tr("<br /><b>Warning:</b> Make sure ckb-next-daemon is allowed in Security & Privacy -> Input monitoring.<br />Please allow for up to 10 seconds for the daemon restart prompt to show up after allowing input monitoring."));
-#elif defined(Q_OS_LINUX)
-            if(!(QFileInfo("/dev/uinput").exists() || QFileInfo("/dev/input/uinput").exists())){
-                QProcess modprobe;
-                modprobe.start("modprobe", QStringList("uinput"));
-
-                if(!modprobe.waitForFinished())
-                    qDebug() << "Modprobe error";
-
-                if(modprobe.exitCode())
-                    daemonWarning.append(tr("<br /><b>Warning:</b> The uinput module could not be loaded. If this issue persists after rebooting, compile a kernel with CONFIG_INPUT_UINPUT=y."));
-            }
-#endif
-        settingsWidget->setStatus(tr("No devices connected") + daemonWarning);
-    }
-    else if(count == 1)
-        settingsWidget->setStatus(tr("1 device connected") + daemonWarning);
-    else
-        settingsWidget->setStatus(QString(tr("%1 devices connected")).arg(count) + daemonWarning);
-}
-
-void MainWindow::checkFwUpdates(){
-    if(!mainWindow->isVisible())
-        return;
+void MainWindow::firmwareUpdateAvailable(Kb* device, CkbVersionNumber version){
     foreach(KbWidget* w, kbWidgets){
-        // Display firmware upgrade notification if a new version is available
-        CkbVersionNumber version = app->firmware()->versionForBoard(w->device->productID);
-        if(version > w->device->firmware.app){
-            if(w->hasShownNewFW)
-                continue;
-            w->hasShownNewFW = true;
-            w->updateFwButton();
-            // Don't run this method here because it will lock up the timer and prevent devices from working properly
-            // Use a queued invocation instead
-            metaObject()->invokeMethod(this, "showFwUpdateNotification", Qt::QueuedConnection, Q_ARG(QWidget*, w), Q_ARG(CkbVersionNumber, version));
-            // Don't display more than one of these at once
-            return;
-        }
+        if(w->device != device)
+            continue;
+        w->updateFwButton();
+        // Don't run this method here because it will lock up the timer and prevent devices from working properly
+        // Use a queued invocation instead
+        metaObject()->invokeMethod(this, "showFwUpdateNotification", Qt::QueuedConnection, Q_ARG(QWidget*, w), Q_ARG(CkbVersionNumber, version));
+        return;
     }
 }
 
@@ -351,41 +285,7 @@ void MainWindow::closeEvent(QCloseEvent *event){
 }
 
 void MainWindow::timerTick(){
-    // Check shared memory for changes
-    if(appShare.lock()){
-        void* shmData = appShare.data();
-        QStringList commands = QString((const char*)shmData).split("\n");
-        // Restore PID, remove all other data
-        snprintf((char*)appShare.data(), appShare.size(), "PID %ld", (long)getpid());
-        appShare.unlock();
-        // Parse commands
-        foreach(const QString& line, commands){
-            // Old ckb option line - bring application to foreground
-            if(line == "Open")
-                showWindow();
-            if(line.startsWith("Option ")){
-                // New ckb option line
-                QString option = line.section(' ', 1);
-                if(option == "Open")
-                    // Bring to foreground
-                    showWindow();
-                else if(option == "Close")
-                    // Quit application
-                    qApp->quit();
-                else if(option.startsWith("SwitchToProfile"))
-                    emit switchToProfileCLI(option.section(' ', 1));
-                else if(option.startsWith("SwitchToMode: "))
-                    emit switchToModeCLI(option.section(' ', 1));
-                else if(option == QLatin1String("Sleep"))
-                    emit dimAllLightsForIdleCLI();
-            }
-        }
-    }
-    // Check for firmware updates (when appropriate)
-    if(!CkbSettings::get("Program/DisableAutoFWCheck").toBool()){
-        app->firmware()->checkUpdates();
-        checkFwUpdates();
-    }
+    // AppController handles commands and firmware checks on the same timer, before this
     // Poll for setting updates
     settingsWidget->pollUpdates();
 }

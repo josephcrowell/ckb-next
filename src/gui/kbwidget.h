@@ -29,8 +29,6 @@ public:
     Kb* device;
     inline QString name() const { return device->usbModel; }
 
-    // Has the "there is a firmware upgrade for this device..." screen already been shown?
-    bool hasShownNewFW;
     // Update the "Check for updates" label with the current status
     void updateFwButton();
     void setTabBarEnabled(const bool e);

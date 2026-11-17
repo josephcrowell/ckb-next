@@ -67,16 +67,10 @@ public slots:
     void quitApp();
     void checkForCkbUpdates();
 
-signals:
-    void switchToProfileCLI(QString profile);
-    void switchToModeCLI(QString mode);
-    void dimAllLightsForIdleCLI();
-
 private slots:
     void addDevice(Kb* device);
     void removeDevice(Kb* device);
-    void updateVersion();
-    void checkFwUpdates();
+    void firmwareUpdateAvailable(Kb* device, CkbVersionNumber version);
     void timerTick();
     void showFwUpdateNotification(QWidget* widget, CkbVersionNumber version);
     void checkedForNewVer(const QString& ver, const QString& changelog);

@@ -23,7 +23,7 @@
 
 KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector) :
     QWidget(parent),
-    device(_device), hasShownNewFW(false),
+    device(_device),
     ui(new Ui::KbWidget), currentMode(nullptr)
 {
     ui->setupUi(this);
@@ -38,8 +38,8 @@ KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector
 #else // QT_VERSION < 6.7.0
     connect(ui->batteryTrayBox, &QCheckBox::stateChanged, this, &KbWidget::batteryTrayBox_stateChanged);
 #endif
-    connect(MainWindow::mainWindow, &MainWindow::switchToProfileCLI, this, &KbWidget::switchToProfile);
-    connect(MainWindow::mainWindow, &MainWindow::switchToModeCLI, this, &KbWidget::switchToMode);
+    connect(AppController::instance(), &AppController::switchToProfileCLI, this, &KbWidget::switchToProfile);
+    connect(AppController::instance(), &AppController::switchToModeCLI, this, &KbWidget::switchToMode);
     connect(ui->modesList->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &KbWidget::currentSelectionChanged);
 
     controller = new DeviceController(device, windowDetector, this);
