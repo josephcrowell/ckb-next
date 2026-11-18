@@ -1,4 +1,5 @@
 #include "kbmodeeventmgr.h"
+#include "eventmanagercontroller.h"
 #include "kbwindowinfomodel.h"
 #include <QQuickWidget>
 #include <QQuickItem>
@@ -7,10 +8,10 @@
 #include <QCloseEvent>
 #include <QDebug>
 
-KbModeEventMgr::KbModeEventMgr(QWidget* parent, KbWindowInfo* i, const QString& modeName) :
-    QDialog(parent), info(i), model(new KbWindowInfoModel(info, this)), quick(nullptr),
-    backup(info->items)
+KbModeEventMgr::KbModeEventMgr(QWidget* parent, KbWindowInfo* info, const QString& modeName) :
+    QDialog(parent), controller(new EventManagerController(this)), quick(nullptr)
 {
+    KbWindowInfoModel* model = controller->model(info);
     setWindowModality(Qt::WindowModal);
     resize(735, 359);
     setWindowTitle(tr("Mode Event Manager"));
@@ -46,7 +47,7 @@ KbModeEventMgr::KbModeEventMgr(QWidget* parent, KbWindowInfo* i, const QString& 
 
     if(!root->setProperty("model", QVariant::fromValue(static_cast<QObject*>(model)))
             || !root->setProperty("modeText", tr("Switch to mode \"%1\" when:").arg(modeName))
-            || !root->setProperty("ruleEnabled", info->isEnabled())
+            || !root->setProperty("ruleEnabled", controller->ruleEnabled())
             || !root->setProperty("windowActive", isActiveWindow())) {
         qWarning() << "Mode event manager: failed to set the QML properties";
         return;
@@ -71,13 +72,13 @@ KbModeEventMgr::~KbModeEventMgr()
 
 void KbModeEventMgr::onQmlAccepted(bool enabled)
 {
-    info->setEnabled(enabled);
+    controller->accept(enabled);
     close();
 }
 
 void KbModeEventMgr::onQmlRejected()
 {
-    info->items = backup;
+    controller->reject();
     close();
 }
 
@@ -91,9 +92,7 @@ void KbModeEventMgr::changeEvent(QEvent* evt)
 
 void KbModeEventMgr::closeEvent(QCloseEvent* evt)
 {
-    // Disable the mode event if empty
-    if(info->isEmpty())
-        info->setEnabled(false);
+    controller->closed();
 
     // Continue handling the event
     evt->accept();

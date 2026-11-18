@@ -2,11 +2,10 @@
 #define KBMODEEVENTMGR_H
 
 #include <QDialog>
-#include <QVector>
-#include "kbwindowinfo.h"
 
 class QQuickWidget;
-class KbWindowInfoModel;
+class KbWindowInfo;
+class EventManagerController;
 
 class KbModeEventMgr : public QDialog
 {
@@ -26,10 +25,8 @@ private slots:
     void onQmlRejected();
 
 private:
-    KbWindowInfo* info;
-    KbWindowInfoModel* model;
+    EventManagerController* controller;
     QQuickWidget* quick;
-    QVector<KbWindowInfo::MatchPair> backup;
     bool valid = false;
 };
 
