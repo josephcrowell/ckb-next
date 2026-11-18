@@ -13,10 +13,6 @@
 
 class AppController;
 
-#ifndef DISABLE_UPDATER
-#include "ckbupdater.h"
-#endif
-
 namespace Ui {
 class MainWindow;
 }
@@ -65,7 +61,6 @@ public slots:
     void showWindow();
     void stateChange(Qt::ApplicationState state);
     void quitApp();
-    void checkForCkbUpdates();
 
 private slots:
     void addDevice(Kb* device);
@@ -80,9 +75,6 @@ private slots:
     void iconClicked(QSystemTrayIcon::ActivationReason reason);
 private:
     Ui::MainWindow *ui;
-#ifndef DISABLE_UPDATER
-    CkbUpdater* updater;
-#endif
 
 signals:
     void trayIconScrolled(bool up);

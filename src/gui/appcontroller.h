@@ -42,10 +42,17 @@ public:
     // Null when active window detection isn't built in
     inline XWindowDetector* windowDetector() const { return _windowDetector; }
 
+    // Checks for a new ckb-next version unless Program/DisableAutoUpdCheck is set
+    void autoCheckForUpdates();
+
 public slots:
     void quit();
+    // Checks for a new ckb-next version and emits updateChecked (no-op with DISABLE_UPDATER)
+    void checkForUpdates();
 
 signals:
+    // An empty version means no update was found (up to date, or the check failed)
+    void updateChecked(const QString& version, const QString& changelog);
     void showWindowRequested();
     void switchToProfileCLI(QString profile);
     void switchToModeCLI(QString mode);

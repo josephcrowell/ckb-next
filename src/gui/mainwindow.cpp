@@ -16,7 +16,6 @@
 #include "monotonicclock.h"
 
 #ifndef DISABLE_UPDATER
-#include "ckbupdater.h"
 #include "ckbupdaterwidget.h"
 #endif
 
@@ -166,10 +165,10 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
         warnDialog->open();
     }
 #ifndef DISABLE_UPDATER
-    if(!CkbSettings::get("Program/DisableAutoUpdCheck", false).toBool())
-        checkForCkbUpdates();
+    connect(app, &AppController::updateChecked, this, &MainWindow::checkedForNewVer);
+    app->autoCheckForUpdates();
 
-    connect(settingsWidget, &SettingsWidget::checkForUpdates, this, &MainWindow::checkForCkbUpdates);
+    connect(settingsWidget, &SettingsWidget::checkForUpdates, app, &AppController::checkForUpdates);
 #endif
 
 #if defined(Q_OS_MACOS) && !defined(OS_MAC_LEGACY)
@@ -194,14 +193,6 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
 #endif
 
     app->startScan();
-}
-
-void MainWindow::checkForCkbUpdates(){
-#ifndef DISABLE_UPDATER
-    updater = new CkbUpdater(this);
-    connect(updater, &CkbUpdater::checkedForNewVer, this, &MainWindow::checkedForNewVer);
-    updater->checkForNewVersion();
-#endif
 }
 
 void MainWindow::toggleTrayIcon(bool visible){
@@ -377,7 +368,6 @@ void MainWindow::checkedForNewVer(const QString& ver, const QString& changelog){
     } else {
         settingsWidget->setUpdateButtonText(tr("Up to date"));
     }
-    updater->deleteLater();
     settingsWidget->enableUpdateButton();
 #endif
 }

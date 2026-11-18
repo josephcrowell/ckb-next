@@ -1,10 +1,12 @@
 #include "appcontroller.h"
 #include "ckbsettings.h"
+#include "ckbupdater.h"
 #include "kb.h"
 #include "kbfirmware.h"
 #include "kbmanager.h"
 #include "media.h"
 #include "xcb/xwindowdetector.h"
+#include <ckbnextconfig.h>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFileInfo>
@@ -85,6 +87,22 @@ void AppController::shutdown(){
 
 void AppController::quit(){
     qApp->quit();
+}
+
+void AppController::autoCheckForUpdates(){
+    if(!CkbSettings::get("Program/DisableAutoUpdCheck", false).toBool())
+        checkForUpdates();
+}
+
+void AppController::checkForUpdates(){
+#ifndef DISABLE_UPDATER
+    CkbUpdater* updater = new CkbUpdater(this);
+    connect(updater, &CkbUpdater::checkedForNewVer, this, [this, updater](const QString& ver, const QString& changelog){
+        emit updateChecked(ver, changelog);
+        updater->deleteLater();
+    });
+    updater->checkForNewVersion();
+#endif
 }
 
 void AppController::readSignal(){
