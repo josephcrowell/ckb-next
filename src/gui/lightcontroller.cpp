@@ -2,11 +2,14 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <limits>
+#include "animationlistmodel.h"
+#include "animscript.h"
 #include "ckbsettings.h"
+#include "kbanim.h"
 #include "kblight.h"
 
 LightController::LightController(QObject* parent) :
-    QObject(parent), _light(nullptr)
+    QObject(parent), _light(nullptr), _animations(new AnimationListModel(this))
 {
     connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &LightController::applicationStateChanged);
     // Restore "show animated" setting
@@ -18,11 +21,15 @@ void LightController::setLight(KbLight* newLight){
         return;
     if(_light){
         disconnect(_light, &KbLight::updated, this, &LightController::lightUpdated);
+        disconnect(_light, &KbLight::didLoad, this, &LightController::reloadAnimations);
         // Disabled animated colors for previous light
         applyShowAnimated(false);
     }
     connect(newLight, &KbLight::updated, this, &LightController::lightUpdated);
+    if(newLight)
+        connect(newLight, &KbLight::didLoad, this, &LightController::reloadAnimations);
     _light = newLight;
+    _animations->setAnimations(newLight ? newLight->animList() : KbLight::AnimList());
     if(_showAnimated)
         applyShowAnimated(true);
 }
@@ -141,4 +148,107 @@ void LightController::startAnimationPreview(){
 
 void LightController::stopAnimationPreview(){
     disconnect(_light, &KbLight::frameDisplayed, this, &LightController::previewFrame);
+}
+
+void LightController::reloadAnimations(){
+    _animations->setAnimations(_light->animList());
+    emit animationsReloaded();
+}
+
+QString LightController::animationName(const AnimScript* script, int presetId){
+    QString animName = script->presets()[presetId];
+    // If the preset is named "Default", then just use the script name
+    if(!animName.compare("Default", Qt::CaseInsensitive))
+        animName = script->name();
+    else if(animName.compare(script->name(), Qt::CaseInsensitive)){
+        // Append the animation script name otherwise, and only if preset and script name are not identical
+        animName.append(" (");
+        animName.append(script->name());
+        animName.append(")");
+    }
+    return animName;
+}
+
+KbAnim* LightController::addAnimation(const AnimScript* script, int presetId, const QStringList& keys){
+    if(!_light)
+        return nullptr;
+    KbAnim* animation = _light->addAnim(script, keys, animationName(script, presetId), script->preset(presetId));
+    _animations->append(animation);
+    return animation;
+}
+
+KbAnim* LightController::duplicateAnimation(KbAnim* anim){
+    if(!_light)
+        return nullptr;
+    KbAnim* animation = _light->duplicateAnim(anim);
+    _animations->setAnimations(_light->animList());
+    return animation;
+}
+
+void LightController::deleteAnimation(KbAnim* anim){
+    if(!_light || !anim)
+        return;
+    _animations->remove(anim);
+    KbLight::AnimList animList = _light->animList();
+    animList.removeAll(anim);
+    _light->animList(animList);
+    anim->deleteLater();
+}
+
+void LightController::reorderAnimations(const QList<KbAnim*>& order){
+    if(!_light)
+        return;
+    _light->animList(order);
+    _animations->setAnimations(order);
+}
+
+bool LightController::renameAnimation(KbAnim* anim, const QString& name){
+    // Don't allow empty names
+    if(!anim || name.isEmpty())
+        return false;
+    anim->name(name.trimmed());
+    _animations->renamed(anim);
+    return true;
+}
+
+void LightController::setAnimationOpacity(KbAnim* anim, double percent){
+    if(anim)
+        anim->opacity(percent / 100.);
+}
+
+void LightController::setAnimationBlendMode(KbAnim* anim, int mode){
+    if(anim)
+        anim->mode((KbAnim::Mode)mode);
+}
+
+void LightController::setAnimationKeys(KbAnim* anim, const QStringList& keys){
+    if(!anim || !_light)
+        return;
+    QStringList newKeys = keys;
+    // If any keys were selected previously that aren't in the keymap now, leave them in
+    // This is important for layout compatibility - e.g. being able to select both bslash_iso and bslash, because no single layout contains both
+    const KeyMap& map = _light->map();
+    foreach(const QString& key, anim->keys()){
+        if(!map.contains(key))
+            newKeys << key;
+    }
+    anim->keys(newKeys);
+}
+
+void LightController::finishAnimationSettings(KbAnim* anim, bool accepted){
+    if(!anim)
+        return;
+    if(!accepted){
+        anim->resetParams();
+        return;
+    }
+    // Apply settings and restart all animations
+    anim->commitParams();
+    anim->reInit();
+    restartAnimation();
+}
+
+void LightController::restartAnimation(){
+    if(_light)
+        _light->restartAnimation();
 }

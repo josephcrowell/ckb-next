@@ -10,6 +10,7 @@ KbLightWidget::KbLightWidget(QWidget *parent) :
     ui(new Ui::KbLightWidget), keyWidget(new KeyWidget(this))
 {
     ui->setupUi(this);
+    ui->animWidget->setController(controller);
     if(AnimScript::count() == 0)
         ui->animButton->setEnabled(false);
 
@@ -51,7 +52,7 @@ void KbLightWidget::setLight(KbLight* newLight){
     controller->setLight(newLight);
     updateLight();
     keyWidget->setAnimation(QStringList());
-    ui->animWidget->setLight(newLight);
+    ui->animWidget->refreshList();
 }
 
 void KbLightWidget::setMonochrome(){
@@ -107,26 +108,13 @@ void KbLightWidget::on_animButton_clicked(){
         return;
     if(controller->selection().isEmpty())
         keyWidget->selectAll();
-    KbLight* light = controller->light();
-    const QStringList& currentSelection = controller->selection();
-    AnimAddDialog dialog(this, light, currentSelection);
+    AnimAddDialog dialog(this, controller->light(), controller->selection());
     dialog.exec();
     if(dialog.result() != QDialog::Accepted)
         return;
-    const AnimScript* script = dialog.chosenScript();
-    int presetId = dialog.chosenPreset();
-    QString animName = script->presets()[presetId];
-    // If the preset is named "Default", then just use the script name
-    if(!animName.compare("Default", Qt::CaseInsensitive))
-        animName = script->name();
-    else if(animName.compare(script->name(), Qt::CaseInsensitive)){
-        // Append the animation script name otherwise, and only if preset and script name are not identical
-        animName.append(" (");
-        animName.append(script->name());
-        animName.append(")");
-    }
-    ui->animWidget->addAnim(script, currentSelection, animName, script->preset(presetId));
-    light->restartAnimation();
+    KbAnim* animation = controller->addAnimation(dialog.chosenScript(), dialog.chosenPreset(), controller->selection());
+    ui->animWidget->addAnim(animation);
+    controller->restartAnimation();
 }
 
 void KbLightWidget::setLegacyM95(){

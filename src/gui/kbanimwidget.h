@@ -8,6 +8,8 @@
 #include "kbanim.h"
 #include "kblight.h"
 
+class LightController;
+
 namespace Ui {
 class KbAnimWidget;
 }
@@ -20,8 +22,10 @@ public:
     explicit KbAnimWidget(QWidget *parent = nullptr);
     ~KbAnimWidget();
 
-    void setLight(KbLight* newLight);
-    void addAnim(const AnimScript* base, const QStringList& keyList, const QString& name, const QMap<QString, QVariant>& preset);
+    // Call once before use; the list follows the controller's light
+    void setController(LightController* newController);
+    // Lists a new animation (from LightController::addAnimation) and opens its settings
+    void addAnim(KbAnim* animation);
     void duplicateAnim(KbAnim* old);
 
     void clearSelection();
@@ -31,6 +35,9 @@ public:
 signals:
     void animChanged(KbAnim* selection);
     void didUpdateSelection(QStringList keys);
+
+public slots:
+    void refreshList();
 
 private slots:
     void on_animList_currentItemChanged(QListWidgetItem *current, QListWidgetItem *prev);
@@ -42,7 +49,6 @@ private slots:
     void on_keyButton_clicked();
     void on_deleteButton_clicked();
 
-    void refreshList();
     void reorderAnims();
 
 
@@ -51,7 +57,7 @@ private slots:
     void on_nameBox_editingFinished();
 
 private:
-    KbLight* light;
+    LightController* controller;
     QHash<QUuid, KbAnim*> animations;
 
     KbAnim* current;

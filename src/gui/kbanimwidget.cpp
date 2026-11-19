@@ -2,10 +2,11 @@
 #include "animsettingdialog.h"
 #include "kbanimwidget.h"
 #include "ui_kbanimwidget.h"
+#include "lightcontroller.h"
 #include <QMessageBox>
 
 KbAnimWidget::KbAnimWidget(QWidget* parent) :
-    QWidget(parent), light(nullptr), current(nullptr), noReorder(false),
+    QWidget(parent), controller(nullptr), current(nullptr), noReorder(false),
     ui(new Ui::KbAnimWidget)
 {
     ui->setupUi(this);
@@ -18,15 +19,9 @@ KbAnimWidget::~KbAnimWidget(){
     delete ui;
 }
 
-void KbAnimWidget::setLight(KbLight* newLight){
-    if(light != newLight){
-        if(light)
-            disconnect(light, SIGNAL(didLoad()), this, SLOT(refreshList()));
-        if(newLight)
-            connect(newLight, SIGNAL(didLoad()), this, SLOT(refreshList()));
-        light = newLight;
-    }
-    refreshList();
+void KbAnimWidget::setController(LightController* newController){
+    controller = newController;
+    connect(controller, &LightController::animationsReloaded, this, &KbAnimWidget::refreshList);
 }
 
 void KbAnimWidget::refreshList(){
@@ -35,6 +30,7 @@ void KbAnimWidget::refreshList(){
     ui->animList->clear();
     animations.clear();
     // Add the animations from the new lighting mode
+    KbLight* light = controller ? controller->light() : nullptr;
     if(!light){
         ui->animList->setVisible(false);
         ui->noAnimLabel->setVisible(true);
@@ -59,7 +55,7 @@ void KbAnimWidget::refreshList(){
 }
 
 void KbAnimWidget::reorderAnims(){
-    if(light && !noReorder){
+    if(controller && controller->light() && !noReorder){
         // Clear and rebuild the list of animations in case the animation moved
         int count = ui->animList->count();
         QList<KbAnim*> animList;
@@ -70,7 +66,7 @@ void KbAnimWidget::reorderAnims(){
                 animList.append(anim);
             item->setFlags(item->flags() | Qt::ItemIsEditable);
         }
-        light->animList(animList);
+        controller->reorderAnimations(animList);
     }
 }
 
@@ -79,11 +75,10 @@ void KbAnimWidget::clearSelection(){
     setCurrent(nullptr);
 }
 
-void KbAnimWidget::addAnim(const AnimScript* base, const QStringList& keyList, const QString& name, const QMap<QString, QVariant>& preset){
-    if(!light)
+void KbAnimWidget::addAnim(KbAnim* animation){
+    if(!animation)
         return;
     noReorder = true;
-    KbAnim* animation = light->addAnim(base, keyList, name, preset);
     QListWidgetItem* item = new QListWidgetItem(animation->name(), ui->animList);
     item->setData(Qt::UserRole, animation->guid());
     item->setFlags(item->flags() | Qt::ItemIsEditable);
@@ -101,13 +96,13 @@ void KbAnimWidget::addAnim(const AnimScript* base, const QStringList& keyList, c
 }
 
 void KbAnimWidget::duplicateAnim(KbAnim* old){
-    if(!light)
+    if(!controller->light())
         return;
     noReorder = true;
-    KbAnim* animation = light->duplicateAnim(old);
+    KbAnim* animation = controller->duplicateAnimation(old);
     // Refresh the list. insertItem doesn't seem to place the item in the correct position on its own...
     refreshList();
-    ui->animList->setCurrentRow(light->animList().indexOf(animation));
+    ui->animList->setCurrentRow(controller->light()->animList().indexOf(animation));
     ui->animList->setVisible(true);
     ui->noAnimLabel->setVisible(false);
 
@@ -160,12 +155,10 @@ void KbAnimWidget::on_animList_itemChanged(QListWidgetItem* item){
         KbAnim* anim = animations[item->data(Qt::UserRole).toUuid()];
         if(anim){
             // Don't allow empty names
-            if(item->text().isEmpty()){
+            if(!controller->renameAnimation(anim, item->text())){
                 item->setText(anim->name());
                 return;
             }
-
-            anim->name(item->text().trimmed());
 
             if(anim == current && !noReorder)
                 ui->nameBox->setText(anim->name());
@@ -202,36 +195,26 @@ void KbAnimWidget::on_nameBox_textEdited(const QString &arg1){
 
     if(current){
         noReorder = true;
-        current->name(arg1.trimmed());
+        controller->renameAnimation(current, arg1);
         ui->animList->currentItem()->setText(current->name());
         noReorder = false;
     }
 }
 
 void KbAnimWidget::on_opacityBox_valueChanged(double arg1){
-    if(current)
-        current->opacity(arg1 / 100.);
+    controller->setAnimationOpacity(current, arg1);
 }
 
 void KbAnimWidget::on_blendBox_activated(int index){
-    if(current)
-        current->mode((KbAnim::Mode)index);
+    controller->setAnimationBlendMode(current, index);
 }
 
 void KbAnimWidget::on_keyButton_clicked(){
     if(current){
-        QStringList keys = selectedKeys;
-        // If any keys were selected previously that aren't in the keymap now, leave them in
-        // This is important for layout compatibility - e.g. being able to select both bslash_iso and bslash, because no single layout contains both
-        const KeyMap& map = light->map();
-        foreach(const QString& key, current->keys()){
-            if(!map.contains(key))
-                keys << key;
-        }
-        current->keys(keys);
+        controller->setAnimationKeys(current, selectedKeys);
         emit didUpdateSelection(selectedKeys);
     }
-    light->restartAnimation();
+    controller->restartAnimation();
 }
 
 void KbAnimWidget::on_deleteButton_clicked(){
@@ -239,10 +222,7 @@ void KbAnimWidget::on_deleteButton_clicked(){
         if(QMessageBox::question(this, tr("Delete animation"), tr("Are you sure you want to delete this animation?")) != QMessageBox::Yes)
             return;
         animations.remove(current->guid());
-        QList<KbAnim*> animList = light->animList();
-        animList.removeAll(current);
-        light->animList(animList);
-        current->deleteLater();
+        controller->deleteAnimation(current);
         setCurrent(nullptr);
         delete ui->animList->currentItem();
         if(animations.count() == 0){
@@ -250,7 +230,7 @@ void KbAnimWidget::on_deleteButton_clicked(){
             ui->noAnimLabel->setVisible(true);
         }
     }
-    light->restartAnimation();
+    controller->restartAnimation();
 }
 
 void KbAnimWidget::on_propertyButton_clicked(){
@@ -259,14 +239,10 @@ void KbAnimWidget::on_propertyButton_clicked(){
     // Present animation property popup
     AnimSettingDialog dialog(this, current);
     dialog.exec();
-    if(dialog.result() != QDialog::Accepted){
-        current->resetParams();
+    const bool accepted = dialog.result() == QDialog::Accepted;
+    controller->finishAnimationSettings(current, accepted);
+    if(!accepted)
         return;
-    }
-    // Apply settings and restart all animations
-    current->commitParams();
-    current->reInit();
-    light->restartAnimation();
     // Update name
     ui->nameBox->setText(dialog.name());
     on_nameBox_textEdited(dialog.name());

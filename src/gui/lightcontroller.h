@@ -7,6 +7,9 @@
 #include <QStringList>
 #include "colormap.h"
 
+class AnimationListModel;
+class AnimScript;
+class KbAnim;
 class KbLight;
 
 // UI-independent logic of the lighting page, shared by the Widgets and QML UIs
@@ -37,7 +40,28 @@ public:
     inline bool showAnimated() const { return _showAnimated; }
     void setShowAnimated(bool show);
 
+    // Animations of the current light. Only these methods (and KbLight::load) change the list.
+    inline AnimationListModel* animations() const { return _animations; }
+    // "Default" presets use the script name; others get the script name appended unless equal
+    static QString animationName(const AnimScript* script, int presetId);
+    KbAnim* addAnimation(const AnimScript* script, int presetId, const QStringList& keys);
+    KbAnim* duplicateAnimation(KbAnim* anim);
+    // Removes and deletes (later) the animation; doesn't restart the others
+    void deleteAnimation(KbAnim* anim);
+    void reorderAnimations(const QList<KbAnim*>& order);
+    // Returns false and leaves the name unchanged when the name is empty; trims it otherwise
+    bool renameAnimation(KbAnim* anim, const QString& name);
+    void setAnimationOpacity(KbAnim* anim, double percent);
+    void setAnimationBlendMode(KbAnim* anim, int mode);
+    // Keeps keys the animation had that aren't in the current layout (e.g. bslash_iso and bslash)
+    void setAnimationKeys(KbAnim* anim, const QStringList& keys);
+    // After the settings dialog: commit, re-init and restart, or reset the parameters
+    void finishAnimationSettings(KbAnim* anim, bool accepted);
+    void restartAnimation();
+
 signals:
+    // The light loaded its settings again (KbLight::didLoad); the animation list was reset
+    void animationsReloaded();
     // Forwarded KbLight::updated
     void lightUpdated();
     // Key colours changed through this controller (KbLight::color doesn't signal it)
@@ -47,6 +71,7 @@ signals:
 
 private slots:
     void applicationStateChanged(Qt::ApplicationState state);
+    void reloadAnimations();
 
 private:
     void applyShowAnimated(bool show);
@@ -54,6 +79,7 @@ private:
     void stopAnimationPreview();
 
     KbLight* _light;
+    AnimationListModel* _animations;
     QStringList _selection;
     QColor _selectedColor;
     bool _showAnimated;
