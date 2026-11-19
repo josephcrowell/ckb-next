@@ -166,6 +166,7 @@ if (MACOS OR LINUX)
               kbwidget.cpp
               keyaction.cpp
               keymap.cpp
+              keyrenderer.cpp
               keywidget.cpp
               keywidgetdebugger.cpp
               kperfwidget.cpp
@@ -225,6 +226,7 @@ if (MACOS OR LINUX)
               kbwidget.h
               keyaction.h
               keymap.h
+              keyrenderer.h
               keywidget.h
               keywidgetdebugger.h
               keywidgetlayout.h
