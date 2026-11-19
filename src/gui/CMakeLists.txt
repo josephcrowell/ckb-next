@@ -171,6 +171,7 @@ if (MACOS OR LINUX)
               keywidgetdebugger.cpp
               kperfwidget.cpp
               legacylightwidget.cpp
+              lightcontroller.cpp
               macroreader.cpp
               macrostringeditdialog.cpp
               macrotablemodel.cpp
@@ -232,6 +233,7 @@ if (MACOS OR LINUX)
               keywidgetlayout.h
               kperfwidget.h
               legacylightwidget.h
+              lightcontroller.h
               macroline.h
               macroreader.h
               macrostringeditdialog.cpp

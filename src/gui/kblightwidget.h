@@ -8,6 +8,8 @@
 #include "kblight.h"
 #include "keywidget.h"
 
+class LightController;
+
 namespace Ui {
 class KbLightWidget;
 }
@@ -26,8 +28,8 @@ public:
 
 private slots:
     void updateLight();
+    void updateColors();
     void newSelection(const QStringList& selection);
-    void changeColor(const QColor& newColor);
     void changeAnim(KbAnim* newAnim);
     void changeAnimKeys(const QStringList& keys);
 
@@ -38,20 +40,11 @@ private slots:
 
     void on_showAnimBox_clicked(bool checked);
 
-    void toggleSidelight(); //strafe
-    void toggleM95Light();
-
-    void stateChange(Qt::ApplicationState state);
-
 private:
-    KbLight* light;
-    QStringList currentSelection;
+    LightController* controller;
 
     Ui::KbLightWidget *ui;
     KeyWidget* keyWidget;
-
-    void startAnimationPreview();
-    void stopAnimationPreview();
 };
 
 #endif // KBLIGHTWIDGET_H
