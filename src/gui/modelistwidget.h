@@ -13,7 +13,8 @@ class ModeListWidget : public QTableView
     Q_OBJECT
 public:
     explicit ModeListWidget(QWidget* parent = nullptr);
-    void setDevice(Kb* dev);
+    // Shows model, which belongs to the device's DeviceController
+    void setDevice(Kb* dev, ModeListTableModel* model);
     inline void setIgnoreFocusLoss(const bool e) { ignoreFocusLoss = e; }
     ~ModeListWidget();
 signals:

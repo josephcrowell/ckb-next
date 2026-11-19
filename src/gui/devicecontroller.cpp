@@ -1,11 +1,13 @@
 #include "devicecontroller.h"
+#include "appcontroller.h"
 #include "kb.h"
 #include "kbwindowinfo.h"
+#include "modelisttablemodel.h"
 #include "xcb/xwindowdetector.h"
 #include <QDebug>
 
 DeviceController::DeviceController(Kb* device, XWindowDetector* windowDetector, QObject* parent) :
-    QObject(parent), _device(device)
+    QObject(parent), _device(device), _modes(new ModeListTableModel(device, this))
 {
 #ifdef USE_XCB_EWMH
     if(windowDetector)
@@ -13,6 +15,161 @@ DeviceController::DeviceController(Kb* device, XWindowDetector* windowDetector, 
 #else
     Q_UNUSED(windowDetector);
 #endif
+    connect(device, &Kb::profileRenamed, this, &DeviceController::profilesChanged);
+    connect(device, &Kb::profileAdded, this, &DeviceController::profilesChanged);
+    connect(device, &Kb::modeChanged, this, &DeviceController::updateCurrentMode);
+    connect(AppController::instance(), &AppController::switchToProfileCLI, this, &DeviceController::switchToProfile);
+    connect(AppController::instance(), &AppController::switchToModeCLI, this, &DeviceController::switchToMode);
+}
+
+QStringList DeviceController::profileNames() const {
+    QStringList names;
+    foreach(KbProfile* profile, _device->profiles())
+        names.append(profile->name());
+    return names;
+}
+
+int DeviceController::currentProfileIndex() const {
+    return _device->profiles().indexOf(_device->currentProfile());
+}
+
+int DeviceController::hardwareProfileIndex() const {
+    return _device->profiles().indexOf(_device->hwProfile());
+}
+
+bool DeviceController::selectProfile(int index){
+    if(index >= _device->profiles().count())
+        return false;
+    _device->setCurrentProfile(_device->profiles()[index]);
+    // Device will emit profileChanged() and modeChanged() signals to update UI
+    return true;
+}
+
+void DeviceController::updateCurrentMode(){
+    if(_device->currentProfile()->indexOf(_device->currentMode()) < 0)
+        return;
+    _currentMode = _device->currentMode();
+}
+
+int DeviceController::selectMode(int row){
+    if(row > _device->currentProfile()->modeCount() - 1)
+        return _modes->addNewMode();
+    KbMode* mode = _device->currentProfile()->at(row);
+    _device->setCurrentMode(mode);
+    return -1;
+}
+
+bool DeviceController::isCurrentModeRow(int row) const {
+    KbProfile* currentProfile = _device->currentProfile();
+    if(row < 0 || !_currentMode || row > currentProfile->modeCount() - 1)
+        return false;
+    return currentProfile->modes().at(row) == _currentMode;
+}
+
+bool DeviceController::canDeleteMode() const {
+    return _device->currentProfile()->modeCount() > _device->hwModeCount;
+}
+
+bool DeviceController::canMoveModeUp(int row) const {
+    return row != 0;
+}
+
+bool DeviceController::canMoveModeDown(int row) const {
+    return row < _device->currentProfile()->modeCount() - 1;
+}
+
+void DeviceController::duplicateMode(int row){
+    KbProfile* currentProfile = _device->currentProfile();
+    KbMode* newMode = _device->newMode(_currentMode);
+    newMode->newId();
+    _modes->profileAboutToChange();
+    currentProfile->insert(row + 1, newMode);
+    _modes->profileChanged();
+    _device->setCurrentMode(newMode);
+}
+
+void DeviceController::deleteMode(int row){
+    KbProfile* currentProfile = _device->currentProfile();
+    _modes->profileAboutToChange();
+    currentProfile->removeAll(_currentMode);
+    _currentMode->deleteLater();
+    _currentMode = nullptr;
+    // Select next mode
+    _modes->profileChanged();
+    if(row < currentProfile->modeCount())
+        _device->setCurrentMode(currentProfile->modes()[row]);
+    else
+        _device->setCurrentMode(currentProfile->modes().last());
+}
+
+void DeviceController::moveModeUp(int row){
+    KbProfile* currentProfile = _device->currentProfile();
+    _modes->profileAboutToChange();
+    currentProfile->removeAll(_currentMode);
+    currentProfile->insert(row - 1, _currentMode);
+    _modes->profileChanged();
+}
+
+void DeviceController::moveModeDown(int row){
+    KbProfile* currentProfile = _device->currentProfile();
+    _modes->profileAboutToChange();
+    currentProfile->removeAll(_currentMode);
+    currentProfile->insert(row + 1, _currentMode);
+    _modes->profileChanged();
+}
+
+bool DeviceController::toggleModeEvents(int row){
+    if(row > _device->currentProfile()->modeCount() - 1)
+        return false;
+    _currentMode->winInfo()->setEnabled(!_currentMode->winInfo()->isEnabled());
+    return _currentMode->winInfo()->isEmpty();
+}
+
+void DeviceController::enableModeEvents(){
+    // If the current state is "enabled", the previous one was "disabled", which means the user
+    // most likely just wanted to edit, and not disable it, so re-enable it.
+    if(!_currentMode->winInfo()->isEnabled())
+        _currentMode->winInfo()->setEnabled(true);
+}
+
+void DeviceController::saveToHardware(){
+    _modes->profileAboutToChange();
+    _device->save();
+    _device->hwSave();
+    emit profilesChanged();
+    _modes->profileChanged();
+}
+
+void DeviceController::switchToProfile(const QString& profile){
+    int len = _device->profiles().length();
+    for(int i = 0; i < len; i++){
+        KbProfile* loopProfile = _device->profiles().at(i);
+        if(loopProfile->name() != profile)
+            continue;
+
+        qDebug() << "Switching" << _device->usbModel << "to" << profile;
+        _device->setCurrentProfile(loopProfile);
+
+        // Also update the dropdown
+        emit profileSwitched(i);
+        return;
+    }
+}
+
+void DeviceController::switchToMode(const QString& mode){
+    KbProfile* currentProfile = _device->currentProfile();
+    int len = currentProfile->modes().length();
+
+    for(int i = 0; i < len; i++){
+        KbMode* loopMode = currentProfile->modes().at(i);
+        if(loopMode->name() != mode)
+            continue;
+
+        qDebug() << "Switching" << _device->usbModel << "to mode" << mode << "in" << currentProfile->name();
+        _device->setCurrentMode(loopMode);
+
+        return;
+    }
 }
 
 // Returns true if a match is found

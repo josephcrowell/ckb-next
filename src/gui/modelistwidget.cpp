@@ -16,8 +16,8 @@ ModeListWidget::ModeListWidget(QWidget *parent) :
     });
 }
 
-void ModeListWidget::setDevice(Kb* dev){
-    modelptr = new ModeListTableModel(dev, this);
+void ModeListWidget::setDevice(Kb* dev, ModeListTableModel* model){
+    modelptr = model;
     device = dev;
     setModel(modelptr);
     setItemDelegate(new ModeListDelegate(this));

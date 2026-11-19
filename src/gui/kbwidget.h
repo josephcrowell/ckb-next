@@ -45,8 +45,6 @@ private:
     // Battery tray icon for devices with the "battery" feature, owned by this widget
     BatteryStatusTrayIcon* batteryIcon = nullptr;
 
-    KbMode* currentMode;
-
     const static int GUID = Qt::UserRole;
     const static int NEW_FLAG = Qt::UserRole + 1;
     inline int getPollRateBoxIdx(Kb::pollrate_t poll){
@@ -57,12 +55,6 @@ private:
 
     DeviceController* controller;
     void openEventMgr(KbMode* mode);
-    // These profileAboutToChange/profileChanged functions should be removed at some point
-    // and have all the work from the context menu done in the model
-    // so that it can emit the appropriate signals
-    // instead of resetting the whole thing
-    inline void profileAboutToChange() { dynamic_cast<ModeListTableModel*>(ui->modesList->model())->profileAboutToChange(); }
-    inline void profileChanged() { dynamic_cast<ModeListTableModel*>(ui->modesList->model())->profileChanged(); }
 private slots:
     void updateProfileList();
     void on_profileBox_activated(int index);
@@ -82,8 +74,6 @@ private slots:
     void on_tabWidget_currentChanged(int index);
     void on_fwUpdButton_clicked();
     void on_layoutBox_activated(int index);
-    void switchToProfile(const QString& profile);
-    void switchToMode(const QString& mode);
     void on_pollRateBox_currentIndexChanged(int arg1);
     void on_modesList_doubleClicked(const QModelIndex& index);
     void on_modesList_clicked(const QModelIndex& index);

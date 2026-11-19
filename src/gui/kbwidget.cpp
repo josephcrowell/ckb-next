@@ -24,13 +24,14 @@
 KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector) :
     QWidget(parent),
     device(_device),
-    ui(new Ui::KbWidget), currentMode(nullptr)
+    ui(new Ui::KbWidget)
 {
     ui->setupUi(this);
     Q_ASSERT(ui->pollRateBox->count() == Kb::POLLRATE_COUNT);
-    ui->modesList->setDevice(device);
-    connect(device, &Kb::profileRenamed, this, &KbWidget::updateProfileList);
-    connect(device, &Kb::profileAdded, this, &KbWidget::updateProfileList);
+    controller = new DeviceController(device, windowDetector, this);
+    ui->modesList->setDevice(device, controller->modes());
+    connect(controller, &DeviceController::profilesChanged, this, &KbWidget::updateProfileList);
+    connect(controller, &DeviceController::profileSwitched, ui->profileBox, &QComboBox::setCurrentIndex);
     connect(device, &Kb::modeChanged, this, &KbWidget::modeChanged);
     connect(device, &Kb::infoUpdated, this, &KbWidget::devUpdate);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
@@ -38,11 +39,7 @@ KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector
 #else // QT_VERSION < 6.7.0
     connect(ui->batteryTrayBox, &QCheckBox::stateChanged, this, &KbWidget::batteryTrayBox_stateChanged);
 #endif
-    connect(AppController::instance(), &AppController::switchToProfileCLI, this, &KbWidget::switchToProfile);
-    connect(AppController::instance(), &AppController::switchToModeCLI, this, &KbWidget::switchToMode);
     connect(ui->modesList->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &KbWidget::currentSelectionChanged);
-
-    controller = new DeviceController(device, windowDetector, this);
 
     // Remove the Legacy Lighting tab on anything other than the K95L
     if(device->model() != KeyMap::K95L)
@@ -195,15 +192,14 @@ void KbWidget::showDeviceTab(){
 
 void KbWidget::updateProfileList(){
     // Clear profile list and rebuild
-    KbProfile* hwProfile = device->hwProfile(), *currentProfile = device->currentProfile();
+    const QStringList names = controller->profileNames();
+    const int hwIndex = controller->hardwareProfileIndex(), currentIndex = controller->currentProfileIndex();
     ui->profileBox->clear();
-    int i = 0;
-    foreach(KbProfile* profile, device->profiles()){
-        ui->profileBox->addItem((profile == hwProfile) ? QIcon(":/img/icon_profile_hardware.png") : QIcon(":/img/icon_profile.png"),
-                                profile->name());
-        if(profile == currentProfile)
+    for(int i = 0; i < names.count(); i++){
+        ui->profileBox->addItem((i == hwIndex) ? QIcon(":/img/icon_profile_hardware.png") : QIcon(":/img/icon_profile.png"),
+                                names.at(i));
+        if(i == currentIndex)
             ui->profileBox->setCurrentIndex(i);
-        i++;
     }
     ui->profileBox->addItem(QIcon(":/img/icon_blank.png"), tr("Manage profiles..."));
     QFont font = ui->profileBox->font();
@@ -214,17 +210,15 @@ void KbWidget::updateProfileList(){
 void KbWidget::on_profileBox_activated(int index){
     if(index < 0)
         return;
-    if(index >= device->profiles().count()){
+    if(!controller->selectProfile(index)){
         // "Manage profiles" option
         KbProfileDialog dialog(this);
         dialog.exec();
         updateProfileList();
         return;
     }
-    device->setCurrentProfile(device->profiles()[index]);
     // Focus the mode list to highlight the whole row properly
     ui->modesList->setFocus();
-    // Device will emit profileChanged() and modeChanged() signals to update UI
 }
 
 void KbWidget::modeChanged(){
@@ -238,17 +232,12 @@ void KbWidget::modeChanged(){
     ui->mPerfWidget->setPerf(device->currentPerf(), device->currentProfile());
     // Update selection
     ui->modesList->setCurrentIndex(ui->modesList->model()->index(index, 0));
-    currentMode = device->currentMode();
 }
 
 void KbWidget::currentSelectionChanged(const QModelIndex& current, const QModelIndex& previous){
-    if(current.row() > device->currentProfile()->modeCount() - 1){
-        const int row = dynamic_cast<ModeListTableModel*>(ui->modesList->model())->addNewMode();
+    const int row = controller->selectMode(current.row());
+    if(row >= 0)
         ui->modesList->edit(ui->modesList->model()->index(row, ModeListTableModel::COL_MODE_NAME));
-        return;
-    }
-    KbMode* mode = device->currentProfile()->at(current.row());
-    device->setCurrentMode(mode);
 }
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
@@ -266,20 +255,19 @@ void KbWidget::batteryTrayBox_stateChanged(int state){
 
 void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
     QModelIndex idx = ui->modesList->indexAt(pos);
+#if defined(USE_XCB_EWMH) && defined(USE_QML_EVENT_MGR)
     KbProfile* currentProfile = device->currentProfile();
-    if(!idx.isValid() || !currentMode || idx.row() > currentProfile->modeCount() - 1)
+#endif
+    if(!idx.isValid() || !controller->isCurrentModeRow(idx.row()))
         return;
 
     const int row = idx.row();
-    if(currentProfile->modes().at(row) != currentMode){
-        return;
-    }
 
     QMenu menu(this);
     QAction* rename = new QAction(tr("Rename..."), this);
     QAction* duplicate = new QAction(tr("Duplicate"), this);
     QAction* del = new QAction(tr("Delete"), this);
-    bool canDelete = (device->currentProfile()->modeCount() > device->hwModeCount);
+    bool canDelete = controller->canDeleteMode();
     if(!canDelete)
         // Can't delete modes if they're required by hardware
         del->setEnabled(false);
@@ -287,10 +275,10 @@ void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
 #if defined(USE_XCB_EWMH) && defined(USE_QML_EVENT_MGR)
     QAction* focusevts = new QAction(tr("Manage Events"), this);
 #endif
-    if(row == 0)
+    if(!controller->canMoveModeUp(row))
         moveup->setEnabled(false);
     QAction* movedown = new QAction(tr("Move Down"), this);
-    if(row >= currentProfile->modeCount() - 1)
+    if(!controller->canMoveModeDown(row))
         movedown->setEnabled(false);
     menu.addAction(rename);
     menu.addAction(duplicate);
@@ -308,41 +296,20 @@ void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
     if(result == rename){
         ui->modesList->edit(ui->modesList->model()->index(idx.row(), ModeListTableModel::COL_MODE_NAME, idx.parent()));
     } else if(result == duplicate){
-        KbMode* newMode = device->newMode(currentMode);
-        newMode->newId();
-        profileAboutToChange();
-        currentProfile->insert(row + 1, newMode);
-        // Update UI
-        profileChanged();
-        device->setCurrentMode(newMode);
+        controller->duplicateMode(row);
     } else if(result == del){
         if(!canDelete)
             return;
         if(QMessageBox::question(this, tr("Delete mode"), tr("Are you sure you want to delete this mode?")) != QMessageBox::Yes)
             return;
-        profileAboutToChange();
-        currentProfile->removeAll(currentMode);
-        currentMode->deleteLater();
-        currentMode = nullptr;
-        // Select next mode
-        profileChanged();
-        if(row < currentProfile->modeCount())
-            device->setCurrentMode(currentProfile->modes()[row]);
-        else
-            device->setCurrentMode(currentProfile->modes().last());
+        controller->deleteMode(row);
     } else if(result == moveup){
-        profileAboutToChange();
-        currentProfile->removeAll(currentMode);
-        currentProfile->insert(row - 1, currentMode);
+        controller->moveModeUp(row);
         // Update UI
-        profileChanged();
         modeChanged();
     } else if(result == movedown){
-        profileAboutToChange();
-        currentProfile->removeAll(currentMode);
-        currentProfile->insert(row + 1, currentMode);
+        controller->moveModeDown(row);
         // Update UI
-        profileChanged();
         modeChanged();
     }
 #if defined(USE_XCB_EWMH) && defined(USE_QML_EVENT_MGR)
@@ -388,11 +355,7 @@ void KbWidget::updateBattery(uint battery, BatteryStatus charging){
 }
 
 void KbWidget::on_hwSaveButton_clicked(){
-    profileAboutToChange();
-    device->save();
-    device->hwSave();
-    updateProfileList();
-    profileChanged();
+    controller->saveToHardware();
 }
 
 void KbWidget::on_tabWidget_currentChanged(int index){
@@ -483,38 +446,6 @@ void KbWidget::on_layoutBox_activated(int index){
     device->layout(layout, true);
 }
 
-void KbWidget::switchToProfile(const QString& profile){
-    int len = device->profiles().length();
-    for(int i = 0; i < len; i++){
-        KbProfile* loopProfile = device->profiles().at(i);
-        if(loopProfile->name() != profile)
-            continue;
-
-        qDebug() << "Switching" << this->name() << "to" << profile;
-        device->setCurrentProfile(loopProfile);
-
-        // Also update the dropdown
-        ui->profileBox->setCurrentIndex(i);
-        return;
-    }
-}
-
-void KbWidget::switchToMode(const QString& mode){
-    KbProfile* currentProfile = device->currentProfile();
-    int len = currentProfile->modes().length();
-
-    for(int i = 0; i < len; i++){
-        KbMode* loopMode = currentProfile->modes().at(i);
-        if(loopMode->name() != mode)
-            continue;
-
-        qDebug() << "Switching" << this->name() << "to mode" << mode << "in" << currentProfile->name();
-        device->setCurrentMode(loopMode);
-
-        return;
-    }
-}
-
 void KbWidget::on_pollRateBox_currentIndexChanged(int arg1) {
     if(arg1 == -1)
         return;
@@ -542,17 +473,13 @@ void KbWidget::openEventMgr(KbMode* mode) {
 void KbWidget::on_modesList_doubleClicked(const QModelIndex& index) {
     if(index.column() != ModeListTableModel::COL_EVENT_ICON)
         return;
-    // If the current state is "enabled", the previous one was "disabled", which means the user
-    // most likely just wanted to edit, and not disable it, so re-enable it.
-    if(!currentMode->winInfo()->isEnabled())
-        currentMode->winInfo()->setEnabled(true);
-    openEventMgr(currentMode);
+    controller->enableModeEvents();
+    openEventMgr(controller->currentMode());
 }
 
 void KbWidget::on_modesList_clicked(const QModelIndex& index) {
-    if(index.column() != ModeListTableModel::COL_EVENT_ICON || index.row() > device->currentProfile()->modeCount() - 1)
+    if(index.column() != ModeListTableModel::COL_EVENT_ICON)
         return;
-    currentMode->winInfo()->setEnabled(!currentMode->winInfo()->isEnabled());
-    if(currentMode->winInfo()->isEmpty())
-        openEventMgr(currentMode);
+    if(controller->toggleModeEvents(index.row()))
+        openEventMgr(controller->currentMode());
 }
