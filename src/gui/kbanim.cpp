@@ -104,7 +104,8 @@ KbAnim::KbAnim(QObject* parent, const KeyMap& map, const QString& name, const QS
 
 KbAnim::KbAnim(QObject* parent, const KeyMap& map, const KbAnim& other) :
     QObject(parent),
-    _script(AnimScript::copy(this, other.script()->guid())), _scriptGuid(_script->guid()), _scriptName(_script->name()),
+    _script(other._script ? AnimScript::copy(this, other._script->guid()) : nullptr),
+    _scriptGuid(_script ? _script->guid() : other._scriptGuid), _scriptName(_script ? _script->name() : other._scriptName),
     _map(map), _keys(other._keys), _parameters(other._parameters),
     repeatTime(0), kpRepeatTime(0), stopTime(0), kpStopTime(0), repeatMsec(0), kpRepeatMsec(0),
     _guid(other._guid), _name(other._name), _opacity(other._opacity), _mode(other._mode), _isActive(false), _isActiveKp(false), _needsSave(true)
