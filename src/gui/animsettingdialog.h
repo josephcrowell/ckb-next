@@ -8,6 +8,8 @@
 #include "kbanim.h"
 #include <QComboBox>
 
+class AnimSettingsController;
+
 namespace Ui {
 class AnimSettingDialog;
 }
@@ -27,15 +29,16 @@ public:
 private:
     Ui::AnimSettingDialog* ui;
     QCheckBox*  stopCheck, *kpStopCheck;
-    bool        hasRepeat;
 
     KbAnim* _anim;
-    double  lastDuration;
+    AnimSettingsController* controller;
     QMap<QString, QWidget*> settingWidgets;
 
     QMap<QString, QSpinBox*>    angleSpinners;
 
     QFrame* hLine();
+    // Current value of a parameter's control, in AnimSettingsController::uiValue form
+    QVariant widgetValue(const QString& name, AnimScript::Param::Type type) const;
 
 private slots:
     void newDuration(double duration);
