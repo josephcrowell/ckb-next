@@ -1,9 +1,7 @@
-#include <cmath>
-#include <cstdio>
 #include <QPainter>
-#include <QTextStream>
 #include "gradientbutton.h"
 #include "gradientdialog.h"
+#include "gradientmodel.h"
 
 GradientButton::GradientButton(QWidget* parent, bool allowAlpha) :
     QPushButton(parent), _alpha(allowAlpha)
@@ -37,65 +35,12 @@ void GradientButton::updateImage(){
 }
 
 void GradientButton::fromString(const QString& string){
-    // Clear existing stops
-    _stops.clear();
-    // Parse string with sscanf
-    QByteArray cString = string.toLatin1();
-    const char* dataStr = cString.data();
-    char pos = -1;
-    uchar a, r, g, b;
-    while(1){
-        int scanned = 0;
-        signed char newpos;
-        if(sscanf(dataStr, "%hhd:%2hhx%2hhx%2hhx%2hhx%n", &newpos, &a, &r, &g, &b, &scanned) != 5)
-            break;
-        dataStr += scanned;
-        // Don't allow stops out-of-order or past 100
-        if(newpos <= pos || newpos > 100)
-            break;
-        pos = newpos;
-        if(!_alpha)
-            a = 255;
-        _stops.append(QGradientStop(pos / 100., QColor(r, g, b, a)));
-    }
-    if(_stops.count() == 0){
-        // If nothing was read, try a single ARGB constant.
-        if(sscanf(dataStr, "%2hhx%2hhx%2hhx%2hhx", &a, &r, &g, &b) == 4){
-            _stops.append(QGradientStop(0., QColor(r, g, b, a)));
-            _stops.append(QGradientStop(1., QColor(r, g, b, 0.)));
-        }
-    }
-    // If that still didn't work, fill with white
-    if(_stops.count() == 0){
-        _stops.append(QGradientStop(0., QColor(255, 255, 255)));
-        _stops.append(QGradientStop(1., QColor(255, 255, 255)));
-    }
-    // Make sure there are stops at 0 and at 100
-    if(_stops[0].first != 0.)
-        _stops.prepend(QGradientStop(0., _stops[0].second));
-    if(_stops.last().first != 1.)
-        _stops.prepend(QGradientStop(1., _stops.last().second));
+    _stops = GradientModel::fromString(string, _alpha);
     updateImage();
 }
 
 QString GradientButton::toString() const {
-    QStringList result;
-    foreach(const QGradientStop& stop, _stops){
-        QString string;
-        QTextStream out(&string);
-        const QColor& color = stop.second;
-        // "%d:%02x%02x%02x%02x"
-        out << static_cast<int>(round(stop.first * 100.f)) << ':'
-            << qSetFieldWidth(2) << qSetPadChar('0') <<
-#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
-               hex
-#else
-               Qt::hex
-#endif
-            << color.alpha() << color.red() << color.green() << color.blue();
-        result << string;
-    }
-    return result.join(" ");
+    return GradientModel::toString(_stops);
 }
 
 void GradientButton::pickGradient(){

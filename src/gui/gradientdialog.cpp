@@ -6,69 +6,17 @@
 #include "gradientdialog.h"
 #include "ui_gradientdialog.h"
 
-static const QString prefsPath = "Stored Gradients";
-
 GradientDialog::GradientDialog(QWidget *parent) :
     QDialog(parent),
+    presets(new GradientPresetModel(this)),
     ui(new Ui::GradientDialog)
 {
     ui->setupUi(this);
     connect(ui->widget, SIGNAL(currentChanged(QColor,bool,int)), this, SLOT(currentChanged(QColor,bool,int)));
     connect(ui->stopColor, SIGNAL(colorChanged(QColor)), this, SLOT(colorChanged(QColor)));
 
-    // Add built-in presets
-    Preset blackAndWhite("B & W", true);
-    blackAndWhite.gradient.append(QGradientStop(0., QColor(0, 0, 0)));
-    blackAndWhite.gradient.append(QGradientStop(1., QColor(255, 255, 255)));
-    Preset fade("Fade", true);
-    fade.gradient.append(QGradientStop(0., QColor(255, 255, 255)));
-    fade.gradient.append(QGradientStop(1., QColor(255, 255, 255, 0)));
-    Preset rainbow("Rainbow", true);
-    rainbow.gradient.append(QGradientStop(0.00, QColor(255, 0, 0)));
-    rainbow.gradient.append(QGradientStop(0.17, QColor(255, 255, 0)));
-    rainbow.gradient.append(QGradientStop(0.33, QColor(0, 255, 0)));
-    rainbow.gradient.append(QGradientStop(0.50, QColor(0, 255, 255)));
-    rainbow.gradient.append(QGradientStop(0.67, QColor(0, 0, 255)));
-    rainbow.gradient.append(QGradientStop(0.83, QColor(255, 0, 255)));
-    rainbow.gradient.append(QGradientStop(1.00, QColor(255, 0, 0)));
-    Preset pastelRainbow("Pastel Rainbow", true);
-    pastelRainbow.gradient.append(QGradientStop(0.00, QColor(240, 158, 167)));
-    pastelRainbow.gradient.append(QGradientStop(0.17, QColor(246, 202, 148)));
-    pastelRainbow.gradient.append(QGradientStop(0.33, QColor(193, 235, 192)));
-    pastelRainbow.gradient.append(QGradientStop(0.50, QColor(160, 255, 252)));
-    pastelRainbow.gradient.append(QGradientStop(0.67, QColor(199, 202, 255)));
-    pastelRainbow.gradient.append(QGradientStop(0.83, QColor(246, 194, 243)));
-    pastelRainbow.gradient.append(QGradientStop(1.00, QColor(240, 158, 167)));
-    addPreset(blackAndWhite);
-    addPreset(fade);
-    addPreset(rainbow);
-    addPreset(pastelRainbow);
-
-    // Load stored presets
-    CkbSettings settings(prefsPath);
-    foreach(const QString& name, settings.childGroups()){
-        QString pName = name.toLower();
-        if(presets.contains(pName))
-            continue;
-        SGroup group(settings, name);
-        // Create keys in a map to ensure correct order and no duplicates
-        QMap<int, QColor> colors;
-        foreach(const QString& position, settings.childKeys()){
-            int pos = position.toInt();
-            if(pos < 0 || pos > 100)
-                continue;
-            colors[pos] = settings.value(position).value<QColor>();
-        }
-        if(colors.count() < 2)
-            continue;
-        Preset preset(name);
-        QMapIterator<int, QColor> i(colors);
-        while(i.hasNext()){
-            i.next();
-            preset.gradient.append(QGradientStop(i.key() / 100., i.value()));
-        }
-        presets[pName] = preset;
-    }
+    // Built-in and stored presets
+    presets->load();
 
     updatePresets();
 }
@@ -85,16 +33,7 @@ QGradientStops GradientDialog::getGradient(const QGradientStops& prevGradient){
 
 GradientDialog::~GradientDialog(){
     // Save presets
-    CkbSettings settings(prefsPath, true);
-    QMapIterator<QString, Preset> i(presets);
-    while(i.hasNext()){
-        Preset preset = i.next().value();
-        if(!preset.builtIn){
-            SGroup group(settings, preset.name);
-            foreach(const QGradientStop& stop, preset.gradient)
-                settings.setValue(QString::number((int)(stop.first * 100.)), stop.second);
-        }
-    }
+    presets->store();
     delete ui;
 }
 
@@ -123,12 +62,11 @@ QIcon GradientDialog::makeIcon(const Preset& preset){
 
 void GradientDialog::updatePresets(){
     ui->presetList->clear();
-    QMapIterator<QString, Preset> i(presets);
-    while(i.hasNext()){
-        i.next();
-        const Preset& preset = i.value();
+    for(int row = 0; row < presets->rowCount(); row++){
+        const QString key = presets->keyAt(row);
+        const Preset preset = presets->preset(key);
         QListWidgetItem* item = new QListWidgetItem(makeIcon(preset), preset.name, ui->presetList);
-        if(currentPreset == i.key())
+        if(currentPreset == key)
             item->setSelected(true);
         ui->presetList->addItem(item);
     }
@@ -163,14 +101,14 @@ void GradientDialog::setPreset(const QString &newPreset){
     if(newPreset == ""){
         ui->presetList->clearSelection();
         ui->presetList->setCurrentItem(nullptr);
-        Preset current = presets.value(currentPreset);
+        Preset current = presets->preset(currentPreset);
         QString curName = ui->presetName->text().trimmed();
         if(curName == "" || (curName == current.name && current.builtIn))
             ui->presetName->setText(tr("Custom"));
         ui->presetDelete->setEnabled(false);
         ui->presetSave->setEnabled(true);
     } else {
-        Preset current = presets.value(newPreset);
+        Preset current = presets->preset(newPreset);
         ui->presetName->setText(current.name);
         ui->presetDelete->setEnabled(!current.builtIn);
         ui->presetSave->setEnabled(false);
@@ -185,7 +123,7 @@ void GradientDialog::on_presetList_currentItemChanged(QListWidgetItem *current, 
 }
 
 void GradientDialog::on_presetName_textEdited(const QString &arg1){
-    if(currentPreset != "" && arg1.trimmed() != presets[currentPreset].name)
+    if(currentPreset != "" && arg1.trimmed() != presets->preset(currentPreset).name)
         setPreset("");
 }
 
@@ -195,9 +133,9 @@ void GradientDialog::on_presetSave_clicked(){
     QString name = ui->presetName->text().trimmed();
     if(name == "")
         ui->presetName->setText(name = tr("Custom"));
-    QString pName = name.toLower();
+    QString pName = GradientPresetModel::key(name);
     // Make sure not to overwrite a built-in preset
-    Preset previous = presets[pName];
+    Preset previous = presets->preset(pName);
     if(previous.builtIn){
         QMessageBox::warning(this, tr("Error"), tr("Can't overwrite a built-in preset. Please choose a different name."));
         setFocus();
@@ -209,8 +147,7 @@ void GradientDialog::on_presetSave_clicked(){
             return;
         }
     }
-    presets[pName] = Preset(name, ui->widget->stops());
-    currentPreset = pName;
+    currentPreset = presets->setPreset(name, ui->widget->stops());
     ui->presetDelete->setEnabled(true);
     ui->presetSave->setEnabled(false);
     updatePresets();
@@ -218,14 +155,14 @@ void GradientDialog::on_presetSave_clicked(){
 }
 
 void GradientDialog::on_presetDelete_clicked(){
-    Preset current = presets.value(currentPreset);
+    Preset current = presets->preset(currentPreset);
     if(current.name == "" || current.builtIn)
         return;
     if(QMessageBox::warning(this, tr("Warning"), tr("Delete preset \"%1\"?").arg(current.name), QMessageBox::StandardButtons(QMessageBox::Yes | QMessageBox::No)) != QMessageBox::Yes){
         setFocus();
         return;
     }
-    presets.remove(currentPreset);
+    presets->removePreset(currentPreset);
     currentPreset = "";
     ui->presetDelete->setEnabled(false);
     ui->presetSave->setEnabled(true);

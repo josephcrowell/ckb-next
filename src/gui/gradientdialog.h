@@ -4,6 +4,7 @@
 #include <QDialog>
 #include <QListWidgetItem>
 #include <QMap>
+#include "gradientmodel.h"
 
 namespace Ui {
 class GradientDialog;
@@ -19,19 +20,11 @@ public:
 
     QGradientStops getGradient(const QGradientStops& prevGradient);
 private:
+    typedef GradientPresetModel::Preset Preset;
     // Preset gradients, sorted by lower case name
-    struct Preset {
-        QString         name;
-        QGradientStops  gradient;
-        bool            builtIn;
-        inline Preset(QString _name, bool _builtIn = false)             : name(_name), builtIn(_builtIn) {}
-        inline Preset(QString _name, const QGradientStops& _gradient)   : name(_name), gradient(_gradient), builtIn(false) {}
-        inline Preset()                                                 : builtIn(false) {}
-    };
-    QMap<QString, Preset>   presets;
+    GradientPresetModel*    presets;
     QString                 currentPreset;
 
-    inline void addPreset(const Preset& preset) { presets[preset.name.toLower()] = preset; }
     QIcon       makeIcon(const Preset& preset);
     void        updatePresets();
     void        setPreset(const QString& newPreset);

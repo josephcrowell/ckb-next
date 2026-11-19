@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QMouseEvent>
 #include <QPaintEvent>
+#include "gradientmodel.h"
 
 class GradientDialogWidget : public QWidget
 {
@@ -11,31 +12,27 @@ class GradientDialogWidget : public QWidget
 public:
     explicit GradientDialogWidget(QWidget *parent = nullptr);
 
-    void                    setStops(const QGradientStops& stops);
-    inline QGradientStops   stops()                                 { return _stops; }
-    inline int              stopCount()                             { return _stops.count(); }
+    inline void             setStops(const QGradientStops& stops)   { model->setStops(stops); }
+    inline QGradientStops   stops()                                 { return model->stops(); }
+    inline int              stopCount()                             { return model->stopCount(); }
 
-    QColor colorAt(int position);
+    inline QColor colorAt(int position)             { return model->colorAt(position); }
 
-    inline int  current()                           { return _current; }
-    int         moveCurrent(int to);
-    void        setCurrentColor(const QColor& color);
+    inline int  current()                           { return model->current(); }
+    inline int  moveCurrent(int to)                 { return model->moveCurrent(to); }
+    inline void setCurrentColor(const QColor& color){ model->setCurrentColor(color); }
 
 signals:
     void currentChanged(QColor color, bool spontaneous, int position);
 
 private:
-    QColor  selected;
+    GradientModel* model;
+    // Dragged point's position and grab offset in pixels
     int     selectedPos, selectedOffset;
-    int     _current;
-    QMap<int, QColor>   _colors;
-    QGradientStops      _stops;
 
     QRect fillRect();
     QRect stopRect(int pos);
     int selectedStop();
-    QMap<int, QColor> selectionColors();
-    void makeStops();
 
     void paintEvent(QPaintEvent*);
     void mousePressEvent(QMouseEvent* event);

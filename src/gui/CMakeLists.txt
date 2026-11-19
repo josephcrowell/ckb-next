@@ -149,6 +149,7 @@ if (MACOS OR LINUX)
               gradientbutton.cpp
               gradientdialog.cpp
               gradientdialogwidget.cpp
+              gradientmodel.cpp
               idletimer.cpp
               kbanim.cpp
               kbanimwidget.cpp
@@ -214,6 +215,7 @@ if (MACOS OR LINUX)
               gradientbutton.h
               gradientdialog.h
               gradientdialogwidget.h
+              gradientmodel.h
               idletimer.h
               kbanim.h
               kbanimwidget.h
