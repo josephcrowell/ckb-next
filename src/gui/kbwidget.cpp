@@ -4,6 +4,7 @@
 #include <QMessageBox>
 #include <QUrl>
 #include <QTimer>
+#include "firmwarecontroller.h"
 #include "fwupgradedialog.h"
 #include "kbwidget.h"
 #include "kblightwidget.h"
@@ -369,12 +370,11 @@ void KbWidget::on_fwUpdButton_clicked(){
     QString path = QFileDialog::getOpenFileName(this, tr("Select firmware file"), QStandardPaths::writableLocation(QStandardPaths::DownloadLocation), tr("Firmware blobs (*.bin)"));
     if(path.isEmpty())
         return;
-    QFile file(path);
-    if(!file.open(QIODevice::ReadOnly)){
+    QByteArray blob;
+    if(!FirmwareController::readFile(path, blob)){
         QMessageBox::warning(parentWidget(), tr("Error"), tr("<center>File could not be read.</center>"));
         return;
     }
-    QByteArray blob = file.readAll();
     FwUpgradeDialog dialog(parentWidget(), CkbVersionNumber(), blob, device);
     dialog.exec();
 }

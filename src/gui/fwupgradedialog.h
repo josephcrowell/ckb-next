@@ -6,6 +6,8 @@
 #include <QEventLoop>
 #include "kb.h"
 
+class FirmwareController;
+
 namespace Ui {
 class FwUpgradeDialog;
 }
@@ -23,7 +25,6 @@ public:
 private slots:
     void fwUpdateProgress(int current, int total);
     void fwUpdateFinished(bool succeeded);
-    void removeDev();
 
     void on_cancelButton_clicked();
     void on_actionButton_clicked();
@@ -32,14 +33,7 @@ private:
     Ui::FwUpgradeDialog *ui;
     void closeEvent(QCloseEvent* event);
 
-    // FW blob has to be saved to a temporary path for processing.
-    // saveBlob() to save, cleanBlob() to remove.
-    QString         savePath;
-    const QString&  saveBlob();
-    void            cleanBlob();
-
-    QByteArray  blob;
-    Kb*         kb;
+    FirmwareController* controller;
 
     // Event loop for synchronous exec()
     QEventLoop* evLoop;

@@ -146,6 +146,7 @@ if (MACOS OR LINUX)
               devicecontroller.cpp
               eventmanagercontroller.cpp
               extrasettingswidget.cpp
+              firmwarecontroller.cpp
               fwupgradedialog.cpp
               gradientbutton.cpp
               gradientdialog.cpp
@@ -217,6 +218,7 @@ if (MACOS OR LINUX)
               devicecontroller.h
               eventmanagercontroller.h
               extrasettingswidget.h
+              firmwarecontroller.h
               fwupgradedialog.h
               gradientbutton.h
               gradientdialog.h
