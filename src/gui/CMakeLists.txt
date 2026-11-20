@@ -132,6 +132,7 @@ if (MACOS OR LINUX)
               animsettingscontroller.cpp
               appcontroller.cpp
               batterysystemtrayicon.cpp
+              bindcontroller.cpp
               ckbsettings.cpp
               ckbsettingswriter.cpp
               ckbsystemquirks.cpp
@@ -197,6 +198,7 @@ if (MACOS OR LINUX)
               animsettingscontroller.h
               appcontroller.h
               batterystatus.h
+              bindcontroller.h
               ckbsettings.h
               ckbsettingswriter.h
               ckbsystemquirks.h

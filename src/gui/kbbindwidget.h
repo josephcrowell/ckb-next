@@ -6,6 +6,8 @@
 #include "kbprofile.h"
 #include "keywidget.h"
 
+class BindController;
+
 namespace Ui {
 class KbBindWidget;
 }
@@ -33,9 +35,7 @@ private slots:
 private:
     Ui::KbBindWidget *ui;
 
-    KbBind*     bind;
-    KbProfile*  profile;
-    QStringList currentSelection;
+    BindController* controller;
     KeyWidget* keyWidget;
 };
 
