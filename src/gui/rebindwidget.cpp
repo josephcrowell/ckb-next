@@ -127,6 +127,15 @@ void RebindWidget::setBind(KbBind* newBind, KbProfile* newProfile){
 }
 
 void RebindWidget::setSelection(const QStringList& newSelection, bool applyPrevious){
+    // Apply changes to previous selection (if any were made). This comes before refilling the
+    // animation list, which resets the other controls.
+    if(!controller->selection().isEmpty() && applyPrevious){
+        QStringList previous = controller->selection();
+        controller->setSelection(QStringList());
+        if(controller->isChanged(currentForm()))
+            applyChanges(previous, false);
+    }
+
     if(controller->bind()){
         // Populate animation list
         // FIXME: There should be a trigger to update this whenever an animation is added/removed, even if the key selection hasn't changed
@@ -134,13 +143,6 @@ void RebindWidget::setSelection(const QStringList& newSelection, bool applyPrevi
         ui->animBox->addItem(" ");
         foreach(const QString& name, controller->animationNames())
             ui->animBox->addItem(name);
-    }
-
-    // Apply changes to previous selection (if any)
-    if(!controller->selection().isEmpty() && applyPrevious){
-        QStringList previous = controller->selection();
-        controller->setSelection(QStringList());
-        applyChanges(previous, false);
     }
 
     controller->setSelection(newSelection);
@@ -246,6 +248,7 @@ void RebindWidget::setSelection(const QStringList& newSelection, bool applyPrevi
     case RebindController::ActionForm::None:
         break;
     }
+    controller->setLoaded(currentForm());
 }
 
 RebindController::ActionForm RebindWidget::currentForm() const {
@@ -302,6 +305,7 @@ void RebindWidget::applyChanges(const QStringList& keys, bool doUnbind){
         }
     }
     controller->apply(keys, form, doUnbind);
+    controller->setLoaded(form);
 }
 
 void RebindWidget::on_applyButton_clicked(){

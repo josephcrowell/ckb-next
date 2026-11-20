@@ -2,8 +2,10 @@
 #define REBINDCONTROLLER_H
 
 #include <QObject>
+#include <QList>
 #include <QPoint>
 #include <QStringList>
+#include <QUuid>
 
 class KbBind;
 class KbProfile;
@@ -69,7 +71,9 @@ public:
     inline const QStringList& modeNames() const { return _modeNames; }
     // Text of each DPI stage, sniper first; empty for devices without DPI
     QStringList dpiNames() const;
-    QStringList animationNames() const;
+    // Names of the light's animations. A form's animation choice refers to the animations
+    // listed by the last call, even if the light's list has changed since.
+    QStringList animationNames();
     inline MacroTableModel* macros() const { return _macros; }
 
     // Action shared by every selected key; empty if any is unbound or they differ
@@ -82,6 +86,10 @@ public:
     int unmatchedMacroLine(const ActionForm& form) const;
     // Sets the keys to the form's action; unbinds them if the form has none and unbind is set
     void apply(const QStringList& keys, const ActionForm& form, bool unbind);
+    // Remembers the action the form describes when it was loaded or applied
+    inline void setLoaded(const ActionForm& form) { _loadedAction = action(form); }
+    // The form describes a different action from the one loaded or applied last
+    inline bool isChanged(const ActionForm& form) const { return action(form) != _loadedAction; }
     void resetSelection();
     void unbindSelection();
 
@@ -96,6 +104,8 @@ private:
     QStringList _keys[KEY_LIST_COUNT];
     QStringList _names[KEY_LIST_COUNT];
     QStringList _modeNames;
+    QList<QUuid> _animationIds;
+    QString _loadedAction;
     MacroTableModel* _macros;
 };
 

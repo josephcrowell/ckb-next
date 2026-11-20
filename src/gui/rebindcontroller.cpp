@@ -107,10 +107,13 @@ QStringList RebindController::dpiNames() const {
     return names;
 }
 
-QStringList RebindController::animationNames() const {
+QStringList RebindController::animationNames(){
     QStringList names;
-    foreach(KbAnim* anim, _bind->light()->animList())
+    _animationIds.clear();
+    foreach(KbAnim* anim, _bind->light()->animList()){
         names << anim->name();
+        _animationIds << anim->guid();
+    }
     return names;
 }
 
@@ -356,7 +359,10 @@ QString RebindController::action(const ActionForm& f) const {
     else if(f.lock > 0)
         return KeyAction::lockAction(f.lock - 1);
     else if(f.animation > 0){
-        KbAnim* anim = _bind->light()->animList().at(f.animation - 1);
+        // The chosen animation may have been deleted since the list was taken
+        const KbAnim* anim = f.animation <= _animationIds.count() ? _bind->light()->findAnim(_animationIds.at(f.animation - 1)) : nullptr;
+        if(!anim)
+            return QString();
         return KeyAction::animAction(anim->guid(), !f.animRepeat, f.animStopOnRelease);
     } else if(!f.programPress.isEmpty() || !f.programRelease.isEmpty()){
         int kpStop = 0, krStop = 0;
