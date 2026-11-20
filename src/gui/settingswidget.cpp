@@ -161,6 +161,11 @@ void SettingsWidget::reportFinished(bool ok, const QString& errorOutput, int exi
     }
 
     QString newdir = QFileDialog::getExistingDirectory(this, tr("Select output directory"));
+    // Cancelled
+    if(newdir.isEmpty()){
+        controller->finishReport(true);
+        return;
+    }
     if(controller->saveReport(newdir)){
         QMessageBox::information(this, tr("Report generated successfully"), tr("The report has been generated successfully."));
         controller->showReport();
