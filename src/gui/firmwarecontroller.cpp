@@ -1,8 +1,7 @@
 #include "firmwarecontroller.h"
-#include <QCoreApplication>
 #include <QDebug>
-#include <QDir>
 #include <QFile>
+#include <QTemporaryDir>
 #include "appcontroller.h"
 #include "kb.h"
 #include "kbfirmware.h"
@@ -59,16 +58,16 @@ CkbVersionNumber FirmwareController::blobVersion() const {
 bool FirmwareController::saveBlob(){
     if(!_savePath.isEmpty())
         return true;
-    QDir tmp = QDir::temp();
-    qint64 pid = QCoreApplication::applicationPid();
-    QString path = tmp.absoluteFilePath(QString("ckb-%1-fwblob.bin").arg(pid));
-    QFile output(path);
-    if(!output.open(QIODevice::WriteOnly)){
+    // A folder only this user can open, so nobody can swap the file before the daemon reads it
+    _saveDir.reset(new QTemporaryDir);
+    if(!_saveDir->isValid()){
+        _saveDir.reset();
         return false;
     }
-    if(!output.write(_blob)){
-        output.close();
-        tmp.remove(path);
+    QString path = _saveDir->filePath("fwblob.bin");
+    QFile output(path);
+    if(!output.open(QIODevice::WriteOnly) || !output.write(_blob)){
+        _saveDir.reset();
         return false;
     }
     output.close();
@@ -77,9 +76,8 @@ bool FirmwareController::saveBlob(){
 }
 
 void FirmwareController::cleanBlob(){
-    if(_savePath.isEmpty())
-        return;
-    QFile(_savePath).remove();
+    // Removes the folder with the file
+    _saveDir.reset();
     _savePath = "";
 }
 

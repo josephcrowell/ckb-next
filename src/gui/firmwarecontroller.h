@@ -4,9 +4,11 @@
 #include <QByteArray>
 #include <QObject>
 #include <QString>
+#include <memory>
 #include "ckbversionnumber.h"
 
 class Kb;
+class QTemporaryDir;
 
 // UI-independent logic of a firmware update, shared by the Widgets and QML UIs. Steps: download
 // the newest firmware if no file was given, check it fits the device, save it for the daemon,
@@ -56,7 +58,8 @@ private:
     Kb* _device;
     ushort _productId;
     QByteArray _blob;
-    // Where the firmware is saved; empty if it isn't
+    // Where the firmware is saved, in its own temporary folder; empty if it isn't
+    std::unique_ptr<QTemporaryDir> _saveDir;
     QString _savePath;
     bool _started = false;
 };
