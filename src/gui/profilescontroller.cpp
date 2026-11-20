@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QTemporaryDir>
 #include <QTextStream>
 #include <JlCompress.h>
 #include <ckbnextconfig.h>
@@ -131,12 +132,9 @@ QString ProfilesController::exportFileName(const QStringList& profileNames){
     return filename;
 }
 
-void ProfilesController::extractedFileCleanup(const QStringList& extracted){
-    for(int i = 0; i < extracted.count(); i++){
-        // Delete extracted files
-        QFile fdel(extracted.at(i));
-        fdel.remove();
-    }
+void ProfilesController::removeExtracted(){
+    _extracted.clear();
+    _importDir.reset();
 }
 
 bool ProfilesController::exportProfiles(const QList<KbProfile*>& profiles, QString filename){
@@ -144,11 +142,16 @@ bool ProfilesController::exportProfiles(const QList<KbProfile*>& profiles, QStri
     if(!filename.endsWith(".ckb"))
         filename.append(".ckb");
 
+    // The package's files are written to a private folder, removed on return
+    QTemporaryDir tmpDir;
+    if(!tmpDir.isValid())
+        return false;
+
     QStringList tmpExported;
 
     {
-        // Generate package metadata in /tmp/
-        QString metadatapath = "/tmp/ckbpkg.metadata";
+        // Generate package metadata
+        QString metadatapath = tmpDir.filePath("ckbpkg.metadata");
         QSettings metadata(metadatapath, QSettings::IniFormat);
 
         metadata.beginGroup("metadata");
@@ -168,13 +171,11 @@ bool ProfilesController::exportProfiles(const QList<KbProfile*>& profiles, QStri
             tmpExported.append(metadatapath);
     }
 
-    // Create a QSettings ini in /tmp/ for each selected profile
+    // Create a QSettings ini for each selected profile
     for(int p = 0; p < profiles.count(); p++){
         KbProfile* prof = profiles.at(p);
 
-        QString tmp("/tmp/ckbprofile");
-        tmp.append(QString::number(p));
-        tmp.append(".ini");
+        QString tmp = tmpDir.filePath(QString("ckbprofile%1.ini").arg(p));
 
         // Used to make sure QSettings is destroyed before trying to hash the ini
         {
@@ -209,11 +210,7 @@ bool ProfilesController::exportProfiles(const QList<KbProfile*>& profiles, QStri
         }
     }
 
-    bool compress = JlCompress::compressFiles(filename, tmpExported);
-
-    extractedFileCleanup(tmpExported);
-
-    return compress;
+    return JlCompress::compressFiles(filename, tmpExported);
 }
 
 bool ProfilesController::verifyHash(const QString& file){
@@ -246,26 +243,32 @@ ProfilesController::ImportStatus ProfilesController::openPackage(const QString& 
     if(!filename.endsWith(".ckb"))
         return NotAPackage;
 
-    // Extract the ckb package
-    _extracted = JlCompress::extractDir(filename, QString("/tmp/"));
-
-    if(_extracted.empty())
+    // Extract the ckb package to a private folder
+    _importDir.reset(new QTemporaryDir);
+    if(!_importDir->isValid()){
+        removeExtracted();
         return CannotRead;
+    }
+    _extracted = JlCompress::extractDir(filename, _importDir->path());
+
+    if(_extracted.empty()){
+        removeExtracted();
+        return CannotRead;
+    }
 
     // Check and read the metadata
-    if(!verifyHash("/tmp/ckbpkg.metadata")){
-        extractedFileCleanup(_extracted);
-        _extracted.clear();
+    const QString metadataPath = _importDir->filePath("ckbpkg.metadata");
+    if(!verifyHash(metadataPath)){
+        removeExtracted();
         return InvalidMetadata;
     }
-    QSettings metadata("/tmp/ckbpkg.metadata", QSettings::IniFormat);
+    QSettings metadata(metadataPath, QSettings::IniFormat);
     metadata.beginGroup("metadata");
 
     // Pkg version check
     _importVersion = metadata.value("version").toInt();
     if(CKB_NEXT_PROFILE_VER < _importVersion){
-        extractedFileCleanup(_extracted);
-        _extracted.clear();
+        removeExtracted();
         return TooNew;
     }
 
@@ -274,8 +277,7 @@ ProfilesController::ImportStatus ProfilesController::openPackage(const QString& 
        _device->isMouse() != metadata.value("isMouse").toBool() ||
        _device->isMousepad() != metadata.value("isMousepad").toBool() ||
        _device->isHeadsetStand() != metadata.value("isHeadsetStand").toBool()){
-        extractedFileCleanup(_extracted);
-        _extracted.clear();
+        removeExtracted();
         return WrongDeviceType;
     }
 
@@ -323,8 +325,7 @@ ProfilesController::ImportStatus ProfilesController::readPackageProfiles(){
     }
 
     if(pkgVerifiedCount == 0){
-        extractedFileCleanup(_extracted);
-        _extracted.clear();
+        removeExtracted();
         return NoValidProfiles;
     }
 
@@ -376,6 +377,5 @@ void ProfilesController::closePackage(){
         delete _importSettings.at(i).first;
     _importSettings.clear();
 
-    extractedFileCleanup(_extracted);
-    _extracted.clear();
+    removeExtracted();
 }

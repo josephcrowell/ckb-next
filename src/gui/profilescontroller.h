@@ -6,10 +6,12 @@
 #include <QPair>
 #include <QStringList>
 #include <QUuid>
+#include <memory>
 
 class CkbExternalSettings;
 class Kb;
 class KbProfile;
+class QTemporaryDir;
 
 // UI-independent logic of the profile manager, shared by the Widgets and QML UIs. The UI asks
 // every question; importing runs in steps so it can ask between them.
@@ -66,17 +68,19 @@ public:
     KbProfile* importConflict(int index) const;
     void importProfile(int index, ImportChoice choice);
     void finishImport();
-    // Removes the extracted files and closes the package. Called after step 4 and when the
+    // Removes the extracted package's folder and closes the package. Called after step 4 and when the
     // user stops; after step 1 failed only the files are removed (done by openPackage).
     void closePackage();
 
 private:
     bool verifyHash(const QString& file);
-    void extractedFileCleanup(const QStringList& extracted);
+    // Removes the folder the package was extracted to
+    void removeExtracted();
 
     Kb* _device;
 
-    // Import in progress
+    // Import in progress: the package is extracted to its own temporary folder
+    std::unique_ptr<QTemporaryDir> _importDir;
     QStringList _extracted;
     quint16 _importVersion = 0;
     bool _importDiffers = false;
