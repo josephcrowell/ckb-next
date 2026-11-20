@@ -7,6 +7,7 @@
 #include "macroreader.h"
 #include "macroline.h"
 #include "macrotablemodel.h"
+#include "rebindcontroller.h"
 
 // Key rebinding widget
 
@@ -78,25 +79,13 @@ private slots:
 
 private:
     Ui::RebindWidget* ui;
-
-    // Tab indices
-    const static int TAB_KB = 0, TAB_MOUSE = 1, TAB_ANIM = 2, TAB_SPECIAL = 3, TAB_PROGRAM = 4, TAB_MACRO = 5;
+    RebindController* controller;
 
     void setBox(QWidget* box);
-    KbBind* bind;
-    KbProfile* profile;
-    QStringList selection;
-    QStringList typingKeys;
-    QStringList modKeys;
-    QStringList fnKeys;
-    QStringList numKeys;
-    QStringList mediaKeys;
-    QStringList mouseKeys;
-    QStringList mouseExtKeys;
-    QStringList wheelKeys;
+    // The action the controls describe
+    RebindController::ActionForm currentForm() const;
     MacroReader* macroReader;
     void macroLineRead(QString line, qint64 ustime, bool keydown);
-    MacroTableModel macroLines;
     enum CAPTURE_TYPE {
         CAPTURE_CURRENT_DEVICE,
         CAPTURE_ALL_DAEMON_DEVICES,

@@ -6,14 +6,8 @@
 #include "kbmanager.h"
 #include "macrostringeditdialog.h"
 #include "mainwindow.h"
+#include "rebindcontroller.h"
 #include <QScrollBar>
-
-static const int DPI_OFFSET = -KeyAction::DPI_CYCLE_UP + 1;
-static const int DPI_CUST_IDX = KeyAction::DPI_CUSTOM + DPI_OFFSET;
-
-static const int MACRO_DEFAULT_REPETITION_DEBOUNCE = 500;
-static const int MACRO_DEFAULT_REPETITION_DELAY = 500;
-static const QString MACRO_MAGIC_COLON_REPLACEMENT = QStringLiteral("&das_IST_31N_col0n;");
 
 static inline void setLocalUiElementsEnabled(Ui::RebindWidget* const ui, const bool e){
     ui->editAsStringBtn->setEnabled(e);
@@ -39,58 +33,32 @@ static inline void setUiElementsEnabled(Ui::RebindWidget* const ui, const bool e
 
 RebindWidget::RebindWidget(QWidget *parent) :
     QWidget(parent),
-    ui(new Ui::RebindWidget),
-    bind(nullptr), profile(nullptr), macroReader(nullptr), leftMouseClicked(false),
+    ui(new Ui::RebindWidget), controller(new RebindController(this)),
+    macroReader(nullptr), leftMouseClicked(false),
     macroDelegate(new MacroDropdownDelegate)
 {
     ui->setupUi(this);
     ui->lightWrapBox->hide();
     ui->modeWrapBox->hide();
 
-    // Populate key lists
-    modKeys << "caps" << "lshift" << "rshift" << "lctrl" << "rctrl" << "lwin" << "rwin" << "lalt" << "ralt" << "rmenu" << "fn";
-    fnKeys << "esc" << "f1" << "f2" << "f3" << "f4" << "f5" << "f6" << "f7" << "f8" << "f9" << "f10" << "f11" << "f12" << "prtscn" << "scroll" << "pause" << "f13" << "f14" << "f15" << "f16" << "f17" << "f18" << "f19" << "f20";
-    numKeys << "numlock" << "num0" << "num1" << "num2" << "num3" << "num4" << "num5" << "num6" << "num7" << "num8" << "num9" << "numslash" << "numstar" << "numminus" << "numplus" << "numdot" << "numenter";
-    mediaKeys << "stop" << "prev" << "play" << "next" << "volup" << "voldn" << "mute" << "eject";
-    mouseKeys << "mouse1" << "mouse2" << "mouse3";
-    mouseExtKeys << "mouse4" << "mouse5" << "mouse6" << "mouse7" << "mouse8";
-    wheelKeys << "wheelup" << "wheeldn" << "wheellf" << "wheelrg";
-#ifndef Q_OS_MACOS
-    fnKeys << "f21" << "f22" << "f23" << "f24";
-#endif
-    fnKeys << "ins" << "del" << "home" << "end" << "pgup" << "pgdn" << "power" << "lightup" << "lightdn" << "up" << "down" << "left" << "right";
-
     // Populate boxes
-    foreach(const QString& key, modKeys)
-        ui->modBox->addItem(KeyMap::friendlyName(key));
-    foreach(const QString& key, fnKeys)
-        ui->fnBox->addItem(KeyMap::friendlyName(key).replace("\n", " / "));
-    foreach(const QString& key, numKeys)
-        ui->numBox->addItem(KeyMap::friendlyName(key).remove("NumPad "));
-    foreach(const QString& key, mediaKeys)
-        ui->mediaBox->addItem(KeyMap::friendlyName(key));
+    foreach(const QString& name, controller->keyNames(RebindController::ModifierKeys))
+        ui->modBox->addItem(name);
+    foreach(const QString& name, controller->keyNames(RebindController::FunctionKeys))
+        ui->fnBox->addItem(name);
+    foreach(const QString& name, controller->keyNames(RebindController::NumpadKeys))
+        ui->numBox->addItem(name);
+    foreach(const QString& name, controller->keyNames(RebindController::MediaKeys))
+        ui->mediaBox->addItem(name);
 #ifdef Q_OS_MACOS
-    // Replace some OSX keys with their actual meanings
-    ui->modBox->setItemText(modKeys.indexOf("lwin") + 1, "Left Cmd");
-    ui->modBox->setItemText(modKeys.indexOf("rwin") + 1, "Right Cmd");
-    ui->modBox->setItemText(modKeys.indexOf("lalt") + 1, "Left Option");
-    ui->modBox->setItemText(modKeys.indexOf("ralt") + 1, "Right Option");
-    ui->fnBox->setItemText(fnKeys.indexOf("prtscn") + 1, "F13");
-    ui->fnBox->setItemText(fnKeys.indexOf("scroll") + 1, "F14");
-    ui->fnBox->setItemText(fnKeys.indexOf("pause") + 1, "F15");
-    ui->fnBox->setItemText(fnKeys.indexOf("f13") + 1, "F13 (Windows/Linux)");
-    ui->fnBox->setItemText(fnKeys.indexOf("f14") + 1, "F14 (Windows/Linux)");
-    ui->fnBox->setItemText(fnKeys.indexOf("f15") + 1, "F15 (Windows/Linux)");
-    ui->fnBox->setItemText(fnKeys.indexOf("ins") + 1, "Help");
-    ui->numBox->setItemText(numKeys.indexOf("numlock") + 1, "Clear");
-
     // Add tip label
     ui->progTipLabel->setText("Tip: use the open command to launch a file, directory, or app. For instance, to start Safari:\n  open /Applications/Safari.app");
 #else
     ui->progTipLabel->setText(tr("Tip: use xdg-open to launch a file or directory. For instance, to open your home folder:\n  xdg-open ") + QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
 #endif
+    MacroTableModel* macroLines = controller->macros();
     connect(ui->tabWidget, &QTabWidget::currentChanged, this, &RebindWidget::tabChanged);
-    ui->tableView->setModel(&macroLines);
+    ui->tableView->setModel(macroLines);
     ui->tableView->setColumnWidth(0, 24);
     ui->tableView->setItemDelegateForColumn(0, macroDelegate);
     connect(ui->tableView->verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int min, int max){
@@ -103,10 +71,10 @@ RebindWidget::RebindWidget(QWidget *parent) :
         ui->btnStartMacro->setEnabled(true);
         if(h != QAbstractItemDelegate::RevertModelCache)
             return;
-        macroLines.removeEmptyRowAtEnd();
+        controller->macros()->removeEmptyRowAtEnd();
     });
-    connect(&macroLines, &QAbstractTableModel::dataChanged, this, &RebindWidget::regeneratePreview);
-    connect(&macroLines, &QAbstractTableModel::modelReset, this, &RebindWidget::regeneratePreview);
+    connect(macroLines, &QAbstractTableModel::dataChanged, this, &RebindWidget::regeneratePreview);
+    connect(macroLines, &QAbstractTableModel::modelReset, this, &RebindWidget::regeneratePreview);
     ui->tableView->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     ui->tableView->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
 }
@@ -123,59 +91,30 @@ RebindWidget::~RebindWidget(){
 }
 
 void RebindWidget::setBind(KbBind* newBind, KbProfile* newProfile){
-    bind = newBind;
-    profile = newProfile;
+    controller->setBind(newBind, newProfile);
     setSelection(QStringList());
 
     // Populate typing keys by position
     ui->typingBox->clear();
     ui->typingBox->addItem(" ");
-    typingKeys.clear();
-    // Use the K95 map as it has all keys
-    const KeyMap& map = KeyMap(KeyMap::K95, bind->map().layout());
-    foreach(const QString& name, map.byPosition()){
-        KeyAction action(bind->defaultAction(name));
-        if(action.isNormal() && !modKeys.contains(name) && !fnKeys.contains(name) && !numKeys.contains(name) && !mediaKeys.contains(name) && name != "enter" && name != "tab" && name != "bspace"){
-            const Key& pos = map.key(name);
-            QString friendly = pos.friendlyName();
-            ui->typingBox->addItem(friendly);
-            typingKeys.append(name);
-        }
-    }
-    typingKeys << "enter" << "tab" << "bspace";
-    ui->typingBox->addItem("Enter");
-    ui->typingBox->addItem("Tab");
-    ui->typingBox->addItem("Backspace");
-    if(!map.isISO()){
-        // Add ISO backslash (aka KEY_102ND) to ANSI options
-        typingKeys << "bslash_iso";
-        ui->typingBox->addItem("Backslash (ISO layout)");
-    }
+    foreach(const QString& name, controller->keyNames(RebindController::TypingKeys))
+        ui->typingBox->addItem(name);
 
     // Populate mode list
     ui->modeBox->clear();
     ui->modeBox->addItem(" ");
-    ui->modeBox->addItem("(Previous)");
-    ui->modeBox->addItem("(Next)");
-    int idx = 1;
-    foreach(KbMode* mode, newProfile->modes())
-        ui->modeBox->addItem(QString("%1: %2").arg(idx++).arg(mode->name()));
+    foreach(const QString& name, controller->modeNames())
+        ui->modeBox->addItem(name);
 
     // Enable/disable DPI based on device
-    if(bind->isMouse()){
+    if(newBind->isMouse()){
         ui->dpiButton->setEnabled(true);
         ui->dpiBox->setEnabled(true);
         ui->dpiWarning->hide();
         // Fill DPI slots
-        const KbPerf* perf = bind->perf();
-        for(int i = 0; i < KbPerf::DPI_COUNT; i++){
-            bool sniper = (i == 0);
-            int boxIdx = i + DPI_OFFSET;
-            QPoint dpi = perf->dpi(i);
-            QString text = tr(sniper ? "Sniper:\t%1 x %2" : "%3:\t%1 x %2").arg(dpi.x()).arg(dpi.y());
-            if(!sniper) text = text.arg(i);
-            ui->dpiBox->setItemText(boxIdx, text);
-        }
+        const QStringList dpiNames = controller->dpiNames();
+        for(int i = 0; i < dpiNames.count(); i++)
+            ui->dpiBox->setItemText(i + RebindController::DPI_OFFSET, dpiNames.at(i));
     } else {
         ui->dpiButton->setEnabled(false);
         ui->dpiBox->setEnabled(false);
@@ -188,54 +127,30 @@ void RebindWidget::setBind(KbBind* newBind, KbProfile* newProfile){
 }
 
 void RebindWidget::setSelection(const QStringList& newSelection, bool applyPrevious){
-    if(bind){
+    if(controller->bind()){
         // Populate animation list
         // FIXME: There should be a trigger to update this whenever an animation is added/removed, even if the key selection hasn't changed
         ui->animBox->clear();
         ui->animBox->addItem(" ");
-        foreach(KbAnim* anim, bind->light()->animList())
-            ui->animBox->addItem(anim->name());
+        foreach(const QString& name, controller->animationNames())
+            ui->animBox->addItem(name);
     }
 
     // Apply changes to previous selection (if any)
-    if(!selection.isEmpty() && applyPrevious){
-        QStringList previous = selection;
-        selection = QStringList();
+    if(!controller->selection().isEmpty() && applyPrevious){
+        QStringList previous = controller->selection();
+        controller->setSelection(QStringList());
         applyChanges(previous, false);
     }
 
-    selection = newSelection;
+    controller->setSelection(newSelection);
     if(newSelection.isEmpty()){
         setEnabled(false);
         return;
     } else
         setEnabled(true);
 
-    bool hasAction = false;
-    QString action;
-    if(selection.count() == 1){
-        // Select action from the UI
-        action = bind->action(selection.first());
-        if(!action.isEmpty())
-            hasAction = true;
-    } else {
-        // Select an action from the UI if all keys are the same.
-        // Select nothing if any are unbound or different
-        foreach(const QString& key, selection){
-            QString keyAction = bind->action(key);
-            if(keyAction.isEmpty() || (hasAction && keyAction != action)){
-                hasAction = false;
-                break;
-            } else if(action.isEmpty()){
-                action = keyAction;
-                hasAction = true;
-            }
-        }
-    }
-
-    if(!hasAction)
-        action = "";
-    KeyAction act(action);
+    const RebindController::ActionForm form = controller->form(controller->commonAction());
     // Clear everything
     setBox(nullptr);
     ui->dpiCustXBox->setValue(400);
@@ -253,292 +168,157 @@ void RebindWidget::setSelection(const QStringList& newSelection, bool applyPrevi
     // Clear new UI elements in MacroTab
     ui->macroPreview->clear();
     ui->macroName->clear();
-    macroLines.clear();
+    controller->macros()->clear();
     // Fill in field and select tab according to action type
-    bool mouse = act.isMouse();
-    if(mouse){
+    switch(form.kind){
+    case RebindController::ActionForm::Mouse:
         // Mouse buttons
-        ui->tabWidget->setCurrentIndex(TAB_MOUSE);
-        // Set mouse buttons (indexOf returns -1 if not found, index zero is blank)
-        ui->mbBox->setCurrentIndex(mouseKeys.indexOf(action) + 1);
-        ui->mb2Box->setCurrentIndex(mouseExtKeys.indexOf(action) + 1);
-        ui->wheelBox->setCurrentIndex(wheelKeys.indexOf(action) + 1);
-        if(act.isDPI()){
-            QPoint custom;
-            int value = act.dpiInfo(custom);
-            if(value <= -DPI_OFFSET || value > KeyAction::DPI_CUSTOM)
-                return;
-            ui->dpiBox->setCurrentIndex(value + DPI_OFFSET);
-            if(value == KeyAction::DPI_CUSTOM){
-                ui->dpiCustXBox->setValue(custom.x());
-                ui->dpiCustYBox->setValue(custom.y());
+        ui->tabWidget->setCurrentIndex(form.tab);
+        ui->mbBox->setCurrentIndex(form.mouse);
+        ui->mb2Box->setCurrentIndex(form.mouseExtra);
+        ui->wheelBox->setCurrentIndex(form.wheel);
+        if(form.dpi > 0){
+            ui->dpiBox->setCurrentIndex(form.dpi);
+            if(form.dpi == RebindController::DPI_CUSTOM_INDEX){
+                ui->dpiCustXBox->setValue(form.dpiCustom.x());
+                ui->dpiCustYBox->setValue(form.dpiCustom.y());
             }
         }
-    } else if(act.isNormal()){
+        break;
+    case RebindController::ActionForm::Key:
         // Standard key
-        ui->tabWidget->setCurrentIndex(TAB_KB);
-        ui->typingBox->setCurrentIndex(typingKeys.indexOf(action) + 1);
-        ui->modBox->setCurrentIndex(modKeys.indexOf(action) + 1);
-        ui->fnBox->setCurrentIndex(fnKeys.indexOf(action) + 1);
-        ui->numBox->setCurrentIndex(numKeys.indexOf(action) + 1);
-        ui->mediaBox->setCurrentIndex(mediaKeys.indexOf(action) + 1);
-    } else if(act.isProgram()){
+        ui->tabWidget->setCurrentIndex(form.tab);
+        ui->typingBox->setCurrentIndex(form.typing);
+        ui->modBox->setCurrentIndex(form.modifier);
+        ui->fnBox->setCurrentIndex(form.function);
+        ui->numBox->setCurrentIndex(form.numpad);
+        ui->mediaBox->setCurrentIndex(form.media);
+        break;
+    case RebindController::ActionForm::Program:
         // Program key
-        ui->tabWidget->setCurrentIndex(TAB_PROGRAM);
-        QString onPress, onRelease;
-        int stop = act.programInfo(onPress, onRelease);
-        ui->programKpBox->setText(onPress);
-        ui->programKrBox->setText(onRelease);
-        switch(stop & 0x0F){
-        case KeyAction::PROGRAM_PR_MULTI:
-            ui->programKpSIBox->setChecked(false);
-            ui->programKpModeBox->setCurrentIndex(0);
-            ui->programKpModeBox->setEnabled(false);
-            break;
-        default:
-            ui->programKpSIBox->setChecked(true);
-            ui->programKpModeBox->setCurrentIndex(stop & 0x0F);
-            ui->programKpModeBox->setEnabled(true);
-            break;
-        }
-        switch(stop & 0xF0){
-        case KeyAction::PROGRAM_RE_MULTI:
-            ui->programKrSIBox->setChecked(false);
-            ui->programKrModeBox->setCurrentIndex(0);
-            ui->programKrModeBox->setEnabled(false);
-            break;
-        case KeyAction::PROGRAM_RE_INDEF:
-            ui->programKrSIBox->setChecked(true);
-            ui->programKrModeBox->setCurrentIndex(0);
-            ui->programKrModeBox->setEnabled(true);
-            break;
-        case KeyAction::PROGRAM_RE_KPSTOP:
-            ui->programKrSIBox->setChecked(true);
-            ui->programKrModeBox->setCurrentIndex(1);
-            ui->programKrModeBox->setEnabled(true);
-            break;
-        }
-    } else if(act.isAnim()){
+        ui->tabWidget->setCurrentIndex(form.tab);
+        ui->programKpBox->setText(form.programPress);
+        ui->programKrBox->setText(form.programRelease);
+        ui->programKpSIBox->setChecked(form.pressSingle);
+        ui->programKpModeBox->setCurrentIndex(form.pressMode);
+        ui->programKpModeBox->setEnabled(form.pressSingle);
+        ui->programKrSIBox->setChecked(form.releaseSingle);
+        ui->programKrModeBox->setCurrentIndex(form.releaseMode);
+        ui->programKrModeBox->setEnabled(form.releaseSingle);
+        break;
+    case RebindController::ActionForm::Animation:
         // Animation key
-        ui->tabWidget->setCurrentIndex(TAB_ANIM);
-        bool onlyOnce = false, stopOnRelease = false;
-        QUuid id = act.animInfo(onlyOnce, stopOnRelease);
-        // Find this animation in the list. If not found, -1 will be returned, resulting in the blank space being selected
-        int index = bind->light()->findAnimIdx(id);
-        ui->animBox->setCurrentIndex(index + 1);
-        ui->animOnceBox->setChecked(!onlyOnce);
-        ui->animKrBox->setChecked(stopOnRelease);
-    } else if(act.isSpecial()){
+        ui->tabWidget->setCurrentIndex(form.tab);
+        ui->animBox->setCurrentIndex(form.animation);
+        ui->animOnceBox->setChecked(form.animRepeat);
+        ui->animKrBox->setChecked(form.animStopOnRelease);
+        break;
+    case RebindController::ActionForm::Special:
         // Other special keys
-        ui->tabWidget->setCurrentIndex(TAB_SPECIAL);
-        int param;
-        QString sAction = act.specialInfo(param);
-        // Mode selection. Check wrap-around flag
+        ui->tabWidget->setCurrentIndex(RebindController::TAB_SPECIAL);
         ui->modeWrapBox->setChecked(true);
-        if(sAction == "mode"){
-            ui->modeWrapBox->setChecked(true);
-            if(param == KeyAction::MODE_PREV_WRAP)
-                param = KeyAction::MODE_PREV;
-            else if(param == KeyAction::MODE_NEXT_WRAP)
-                param = KeyAction::MODE_NEXT;
-            else if(param < 0)
-                ui->modeWrapBox->setChecked(false);
-            // Set mode box to current selection, or to mode 1 if invalid
-            param += 3;
-            if(param >= 0 && param < ui->modeBox->count())
-                ui->modeBox->setCurrentIndex(param);
-            else
-                // 0 -> "", 1 -> Prev, 2 -> Next, 3 -> Mode 1
-                ui->modeBox->setCurrentIndex(3);
-        } else if (sAction == "macro") {
-            ui->tabWidget->setCurrentIndex(TAB_MACRO);
-            if (act.isMacro()) {
-                // This string needs to exist for as long as the references below are used
-                QString value = act.value();
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-                // Split the action and discard the "$macro" from the beginning
-                QVector<QStringRef> macroData = value.midRef(7).split(QChar(':'));
-#else
-                QStringView valueView(value);
-                QList<QStringView> macroData = valueView.sliced(7).split(QChar(':'));
-#endif
-
-                const int dataCount = macroData.count();
-                // Macro strings have had different number of field depending on
-                // their version:
-                // - Initial version: 3 fields,
-                // - next iteration: 4 fields, appended the raw macro data,
-                //                   which might be "x" in certain situations,
-                // - current iteration: 5 fields, appended repetition debounce & delay.
-                if (3 <= dataCount && dataCount <= 5) {
-                    // Colons in the name field are escaped
-                    QString macroName = macroData[2].toString();
-                    macroName.replace(MACRO_MAGIC_COLON_REPLACEMENT, ":");
-                    ui->macroName->setText(macroName);
-
-                    // Pick the appropriate string to parse due to legacy formats
-                    QStringView macroString = macroData[0];
-                    if(dataCount == 4 && macroData[3] != QStringLiteral("x"))
-                        macroString = macroData[3];
-
-                    // Try to parse the string
-                    // If there's an error, we'll ignore it and parse as much as possible
-                    macroLines.fromString(macroString.toString(), false);
-
-                    // If the daemon macro string contains even a single delay, then the we set the
-                    // delay to "as typed" instead of "default"
-                    QRegularExpression re("=\\d+");
-// Use different match function depending on Qt version, 6.5.0 deprecates
-// QRegularExpression::match() in favor of QRegularExpression::matchView() when
-// using a QStringView parameter.
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-                    bool has_match = re.matchView(macroData[0]).hasMatch();
-#else // QT_VERSION < 6.5.0
-                    bool has_match = re.match(macroData[0]).hasMatch();
-#endif
-                    if(has_match)
-                        ui->rb_delay_asTyped->setChecked(true);
-                    else
-                        ui->rb_delay_default->setChecked(true);
-
-                    // Set the repetition delay value if it's supplied.
-                    if (dataCount == 5) {
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-                        QVector<QStringRef> repetitionData = macroData[4].split(QChar(';'));
-#else // QT_VERSION >= 6.0.0
-                        QList<QStringView> repetitionData = macroData[4].split(QChar(';'));
-#endif
-                        ui->rep_debounce_input->setValue(repetitionData[0].toInt());
-                        ui->rep_delay_input->setValue(repetitionData[1].toInt());
-                    } else {
-                        ui->rep_debounce_input->setValue(MACRO_DEFAULT_REPETITION_DEBOUNCE);
-                        ui->rep_delay_input->setValue(MACRO_DEFAULT_REPETITION_DELAY);
-                    }
-                }
+        if(form.special == "mode"){
+            ui->modeWrapBox->setChecked(form.modeWrap);
+            ui->modeBox->setCurrentIndex(form.mode);
+        } else if(form.special == "macro"){
+            ui->tabWidget->setCurrentIndex(form.tab);
+            if(form.macroRead){
+                ui->macroName->setText(form.macroName);
+                controller->loadMacro(form);
+                if(form.macroAsTyped)
+                    ui->rb_delay_asTyped->setChecked(true);
+                else
+                    ui->rb_delay_default->setChecked(true);
+                ui->rep_debounce_input->setValue(form.macroDebounce.toInt());
+                ui->rep_delay_input->setValue(form.macroDelay.toInt());
             }
         } else
             ui->modeBox->setCurrentIndex(0);
-        // Brightness control. Also check wrap
-        if(sAction == "light"){
-            ui->lightWrapBox->setChecked(true);
-            if(param == KeyAction::LIGHT_DOWN_WRAP)
-                param = KeyAction::LIGHT_DOWN;
-            else if(param == KeyAction::LIGHT_UP_WRAP)
-                param = KeyAction::LIGHT_UP;
-            else
-                ui->lightWrapBox->setChecked(false);
-            if(param < 0 || param > 1)
-                param = -1;
-            ui->lightBox->setCurrentIndex(param + 1);
+        // Brightness control
+        if(form.special == "light"){
+            ui->lightWrapBox->setChecked(form.lightWrap);
+            ui->lightBox->setCurrentIndex(form.light);
         } else
             ui->lightBox->setCurrentIndex(0);
         // Win lock
-        if(sAction == "lock"){
-            if(param < 0 || param > 2)
-                param = -1;
-            ui->lockBox->setCurrentIndex(param + 1);
-        } else
-            ui->lockBox->setCurrentIndex(0);
+        ui->lockBox->setCurrentIndex(form.lock);
+        break;
+    case RebindController::ActionForm::None:
+        break;
     }
 }
 
+RebindController::ActionForm RebindWidget::currentForm() const {
+    RebindController::ActionForm form;
+    form.typing = ui->typingBox->currentIndex();
+    form.modifier = ui->modBox->currentIndex();
+    form.function = ui->fnBox->currentIndex();
+    form.numpad = ui->numBox->currentIndex();
+    form.media = ui->mediaBox->currentIndex();
+    form.mouse = ui->mbBox->currentIndex();
+    form.mouseExtra = ui->mb2Box->currentIndex();
+    form.wheel = ui->wheelBox->currentIndex();
+    form.dpi = ui->dpiBox->currentIndex();
+    form.dpiCustom = QPoint(ui->dpiCustXBox->value(), ui->dpiCustYBox->value());
+    form.mode = ui->modeBox->currentIndex();
+    form.modeWrap = ui->modeWrapBox->isChecked();
+    form.light = ui->lightBox->currentIndex();
+    form.lightWrap = ui->lightWrapBox->isChecked();
+    form.lock = ui->lockBox->currentIndex();
+    form.animation = ui->animBox->currentIndex();
+    form.animRepeat = ui->animOnceBox->isChecked();
+    form.animStopOnRelease = ui->animKrBox->isChecked();
+    form.programPress = ui->programKpBox->text();
+    form.programRelease = ui->programKrBox->text();
+    form.pressSingle = ui->programKpSIBox->isChecked();
+    form.pressMode = ui->programKpModeBox->currentIndex();
+    form.releaseSingle = ui->programKrSIBox->isChecked();
+    form.releaseMode = ui->programKrModeBox->currentIndex();
+    form.macroName = ui->macroName->text();
+    form.macroDebounce = ui->rep_debounce_input->cleanText();
+    form.macroDelay = ui->rep_delay_input->cleanText();
+    return form;
+}
+
 void RebindWidget::applyChanges(const QStringList& keys, bool doUnbind){
-    if(ui->typingBox->currentIndex() > 0)
-        bind->setAction(keys, typingKeys[ui->typingBox->currentIndex() - 1]);
-    else if(ui->modBox->currentIndex() > 0)
-        bind->setAction(keys, modKeys[ui->modBox->currentIndex() - 1]);
-    else if(ui->fnBox->currentIndex() > 0)
-        bind->setAction(keys, fnKeys[ui->fnBox->currentIndex() - 1]);
-    else if(ui->numBox->currentIndex() > 0)
-        bind->setAction(keys, numKeys[ui->numBox->currentIndex() - 1]);
-    else if(ui->mediaBox->currentIndex() > 0)
-        bind->setAction(keys, mediaKeys[ui->mediaBox->currentIndex() - 1]);
-    else if(ui->mbBox->currentIndex() > 0)
-        bind->setAction(keys, mouseKeys[ui->mbBox->currentIndex() - 1]);
-    else if(ui->mb2Box->currentIndex() > 0)
-        bind->setAction(keys, mouseExtKeys[ui->mb2Box->currentIndex() - 1]);
-    else if(ui->wheelBox->currentIndex() > 0)
-        bind->setAction(keys, wheelKeys[ui->wheelBox->currentIndex() - 1]);
-    else if(ui->dpiBox->currentIndex() > 0)
-        bind->setAction(keys, KeyAction::dpiAction(ui->dpiBox->currentIndex() - DPI_OFFSET, ui->dpiCustXBox->value(), ui->dpiCustYBox->value()));
-    else if(ui->modeBox->currentIndex() > 0)
-        bind->setAction(keys, KeyAction::modeAction(ui->modeBox->currentIndex() - 3 - (ui->modeWrapBox->isChecked() && ui->modeBox->currentIndex() < 3 ? 2 : 0)));
-    else if(ui->lightBox->currentIndex() > 0)
-        bind->setAction(keys, KeyAction::lightAction(ui->lightBox->currentIndex() - 1 + (ui->lightWrapBox->isChecked() ? 2 : 0)));
-    else if(ui->lockBox->currentIndex() > 0)
-        bind->setAction(keys, KeyAction::lockAction(ui->lockBox->currentIndex() - 1));
-    else if(ui->animBox->currentIndex() > 0){
-        KbAnim* anim = bind->light()->animList().at(ui->animBox->currentIndex() - 1);
-        bind->setAction(keys, KeyAction::animAction(anim->guid(), !ui->animOnceBox->isChecked(), ui->animKrBox->isChecked()));
-    } else if(!ui->programKpBox->text().isEmpty() || !ui->programKrBox->text().isEmpty()){
-        int kpStop = 0, krStop = 0;
-        if(!ui->programKpBox->text().isEmpty()){
-            if(!ui->programKpSIBox->isChecked())
-                kpStop = KeyAction::PROGRAM_PR_MULTI;
-            else
-                kpStop = ui->programKpModeBox->currentIndex();
+    const RebindController::ActionForm form = currentForm();
+    // Check if the macro is matched, and if not, warn the user
+    const int pos = controller->unmatchedMacroLine(form);
+    if(pos > -1){
+        const MacroLine& ml = controller->macros()->at(pos);
+        const QString msg = (ml.keyDown ?
+                                 tr("Key %1 (%2) is pressed but never released.\n"
+                               "This will result in the key being pressed by the macro until you manually press the key itself and release it.\n\n"
+                               "Are you sure you want to continue?")
+                               : tr("Key %1 (%2) is released but never pressed.\n"
+                                    "This will have no observable effect unless the key is held down manually or by another macro.\n\n"
+                                    "Are you sure you want to continue?"));
+        if(QMessageBox::warning(this, tr("Macro warning"),
+                             msg.arg(pos + 1).arg(ml.key),
+                             QMessageBox::Ok, QMessageBox::Cancel) != QMessageBox::Ok) {
+            // Select the row that's causing the warning
+            ui->tableView->selectRow(pos);
+            return;
         }
-        if(!ui->programKrBox->text().isEmpty()){
-            if(!ui->programKrSIBox->isChecked())
-                krStop = KeyAction::PROGRAM_RE_MULTI;
-            else if(ui->programKrModeBox->currentIndex() == 0)
-                krStop = KeyAction::PROGRAM_RE_INDEF;
-            else
-                krStop = KeyAction::PROGRAM_RE_KPSTOP;
-        }
-        bind->setAction(keys, KeyAction::programAction(ui->programKpBox->text(), ui->programKrBox->text(), kpStop | krStop));
-    } else if (macroLines.length()) {
-        // Check if the macro is matched, and if not, warn the user
-        const int pos = macroLines.isMacroMatched();
-        if(pos > -1){
-            const MacroLine& ml = macroLines.at(pos);
-            const QString msg = (ml.keyDown ?
-                                     tr("Key %1 (%2) is pressed but never released.\n"
-                                   "This will result in the key being pressed by the macro until you manually press the key itself and release it.\n\n"
-                                   "Are you sure you want to continue?")
-                                   : tr("Key %1 (%2) is released but never pressed.\n"
-                                        "This will have no observable effect unless the key is held down manually or by another macro.\n\n"
-                                        "Are you sure you want to continue?"));
-            if(QMessageBox::warning(this, tr("Macro warning"),
-                                 msg.arg(pos + 1).arg(ml.key),
-                                 QMessageBox::Ok, QMessageBox::Cancel) != QMessageBox::Ok) {
-                // Select the row that's causing the warning
-                ui->tableView->selectRow(pos);
-                return;
-            }
-        }
-        // Generate macro format string
-        // Format is $macro:daemon_string:preview_string:user_specified_macro_name:original_recorded_macro_string:repetition_debounce;repetition_delay
-        // $macro: is added by KeyAction::macroAction()
-        // daemon_string is the one sent to the daemon, and original_recorded_macro_string is the raw user data
-        // preview_string is now unused as it can be generated from the remaining data
-        // Any colons in user_specified_macro_name are escaped
-        QString escapedMacroName = ui->macroName->text().replace(":", MACRO_MAGIC_COLON_REPLACEMENT);
-        QString finalDaemonString = macroLines.toString(false);
-        QString originalString = macroLines.toString(true);
-        QString repDebounceString = ui->rep_debounce_input->cleanText();
-        QString repDelayString = ui->rep_delay_input->cleanText();
-        QString macro = QString("%1::%2:%3:%4;%5").arg(finalDaemonString, escapedMacroName, originalString, repDebounceString, repDelayString);
-        bind->setAction(keys, KeyAction::macroAction(macro));
-    } else if(doUnbind)
-        bind->noAction(keys);
+    }
+    controller->apply(keys, form, doUnbind);
 }
 
 void RebindWidget::on_applyButton_clicked(){
-    applyChanges(selection, true);
+    applyChanges(controller->selection(), true);
 }
 
 void RebindWidget::on_cancelButton_clicked(){
     // Re-load selection
-    setSelection(selection);
+    setSelection(QStringList(controller->selection()));
 }
 
 void RebindWidget::on_resetButton_clicked(){
-    bind->resetAction(selection);
+    controller->resetSelection();
 }
 
 void RebindWidget::on_unbindButton_clicked(){
-    bind->noAction(selection);
+    controller->unbindSelection();
 }
 
 void RebindWidget::setBox(QWidget* box){
@@ -645,7 +425,7 @@ void RebindWidget::on_wheelBox_currentIndexChanged(int index){
 }
 
 void RebindWidget::on_dpiBox_currentIndexChanged(int index){
-    if(index != DPI_CUST_IDX){
+    if(index != RebindController::DPI_CUSTOM_INDEX){
         // Clear custom DPI
         ui->dpiCustXBox->setEnabled(false);
         ui->dpiCustYBox->setEnabled(false);
@@ -817,6 +597,7 @@ void RebindWidget::on_animButton_clicked(bool checked){
 }
 
 void RebindWidget::on_btnStartMacro_clicked() {
+    KbBind* bind = controller->bind();
     // Get the capture type
     CAPTURE_TYPE type = static_cast<CAPTURE_TYPE>(ui->captureTypeBox->currentIndex());
     // If we're already capturing, stop
@@ -836,7 +617,7 @@ void RebindWidget::on_btnStartMacro_clicked() {
         // Remove the last mouse click if the user stopped
         // the capture by clicking on the Stop Recording button
         if(type != CAPTURE_TYPE::CAPTURE_ALL_KEYBOARDS && leftMouseClicked && ui->btnStartMacro->isClickedByMouse()){
-            macroLines.removeLastMouseLeftClick();
+            controller->macros()->removeLastMouseLeftClick();
             QString oldstr = ui->macroPreview->toPlainText();
             oldstr.replace(QRegularExpression("<mouse1>$"), QString());
             ui->macroPreview->setPlainText(oldstr);
@@ -849,7 +630,7 @@ void RebindWidget::on_btnStartMacro_clicked() {
         setUiElementsEnabled(ui, true);
 
         // If we captured any data, clear all other selections in the widget
-        if(macroLines.length())
+        if(controller->macros()->length())
             setBox(ui->macroPreview);
         return;
     }
@@ -900,15 +681,15 @@ void RebindWidget::on_btnStartMacro_clicked() {
 
 void RebindWidget::on_btnClearMacro_clicked() {
     ui->lbl_macro->setText(tr("Click Start Recording or manually edit the events."));
-    macroLines.clear();
+    controller->macros()->clear();
     ui->macroName->clear();
     ui->macroPreview->clear();
-    ui->rep_debounce_input->setValue(MACRO_DEFAULT_REPETITION_DEBOUNCE);
-    ui->rep_delay_input->setValue(MACRO_DEFAULT_REPETITION_DELAY);
+    ui->rep_debounce_input->setValue(RebindController::MACRO_DEFAULT_REPETITION_DEBOUNCE);
+    ui->rep_delay_input->setValue(RebindController::MACRO_DEFAULT_REPETITION_DELAY);
 }
 
 void RebindWidget::on_rb_delay_default_toggled(bool checked){
-    macroLines.setDefaultDelay(checked);
+    controller->macros()->setDefaultDelay(checked);
 }
 
 void RebindWidget::insertIntoMacroPreview(const bool keydown, const bool printable, const QString& line){
@@ -925,7 +706,7 @@ void RebindWidget::insertIntoMacroPreview(const bool keydown, const bool printab
 
 void RebindWidget::macroLineRead(QString line, qint64 ustime, bool keydown){
     const bool printable = (line.length() == 1);
-    macroLines.append(MacroLine(line, ustime, ustime, keydown));
+    controller->macros()->append(MacroLine(line, ustime, ustime, keydown));
 
     // Add keystroke to the key actions textedit
     // "+k", "-k", these can be represented as text
@@ -941,7 +722,7 @@ void RebindWidget::tabChanged(int idx){
         return;
     // We monitor the tabs, and when we switch to the macro tab, we select the appropriate capture method
     if(ui->tabWidget->currentWidget() == ui->macroTab){
-        if(bind->map().isKeyboard()){
+        if(controller->bind()->map().isKeyboard()){
             ui->captureTypeBox->setCurrentIndex(CAPTURE_TYPE::CAPTURE_CURRENT_DEVICE);
         } else {
             // Check if there are any daemon-managed keyboards connected, and if so, capture from them too
@@ -979,9 +760,10 @@ void RebindWidget::on_captureTypeBox_currentIndexChanged(int index){
 
 int RebindWidget::regeneratePreview(){
     ui->macroPreview->clear();
-    const int len = macroLines.length();
+    MacroTableModel* macroLines = controller->macros();
+    const int len = macroLines->length();
     for(int i = 0; i < len; i++){
-        const MacroLine& ml = macroLines.at(i);
+        const MacroLine& ml = macroLines->at(i);
         insertIntoMacroPreview(ml.keyDown, ml.isPrintable(), ml.key);
     }
 
@@ -989,11 +771,11 @@ int RebindWidget::regeneratePreview(){
 }
 
 void RebindWidget::on_editAsStringBtn_clicked(){
-    MacroStringEditDialog* dlg = new MacroStringEditDialog(&macroLines, this);
+    MacroStringEditDialog* dlg = new MacroStringEditDialog(controller->macros(), this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->show();
     connect(dlg, &MacroStringEditDialog::accepted, this, [=](){
-        const int len = macroLines.length();
+        const int len = controller->macros()->length();
         if(len)
             setBox(ui->macroPreview);
     });
@@ -1004,14 +786,14 @@ void RebindWidget::on_btnRemoveEvent_clicked(){
     if(!mil.length())
         return;
 
-    macroLines.removeMultipleColumns(mil);
+    controller->macros()->removeMultipleColumns(mil);
     regeneratePreview();
 }
 
 void RebindWidget::on_btnAddEvent_clicked(){
     setLocalUiElementsEnabled(ui, false);
     ui->btnStartMacro->setEnabled(false);
-    const QModelIndex idx = macroLines.addBlankElement();
+    const QModelIndex idx = controller->macros()->addBlankElement();
     ui->tableView->setCurrentIndex(idx);
     ui->tableView->edit(idx);
 }
