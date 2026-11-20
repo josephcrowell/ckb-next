@@ -336,6 +336,7 @@ ProfilesController::ImportStatus ProfilesController::readPackageProfiles(){
 
 void ProfilesController::beginImport(){
     _importList = _device->profiles();
+    _replaced.clear();
 }
 
 KbProfile* ProfilesController::importConflict(int index) const {
@@ -353,8 +354,11 @@ void ProfilesController::importProfile(int index, ImportChoice choice){
         return;
 
     CkbExternalSettings* sptr = _importSettings.at(index).first;
-    if(choice == Overwrite)
-        _importList.removeAll(importConflict(index));
+    KbProfile* replaced = nullptr;
+    if(choice == Overwrite){
+        replaced = importConflict(index);
+        _importList.removeAll(replaced);
+    }
 
     QString profileGuid = sptr->childGroups().first();
 
@@ -364,11 +368,24 @@ void ProfilesController::importProfile(int index, ImportChoice choice){
     qDebug() << "Importing" << _importNames.at(index);
     KbProfile* newProfile = _device->newProfile(sptr, profileGuid);
     _importList.append(newProfile);
+    if(replaced)
+        _replaced.append(qMakePair(replaced, newProfile));
 }
 
 void ProfilesController::finishImport(){
     _device->profiles(_importList);
     _importList.clear();
+    // The overwritten profiles are no longer listed: the device must not keep using them
+    QList<KbProfile*> deleted;
+    for(const QPair<KbProfile*, KbProfile*>& pair : std::as_const(_replaced)){
+        if(!pair.first || deleted.contains(pair.first))
+            continue;
+        if(pair.first == _device->currentProfile())
+            _device->setCurrentProfile(pair.second);
+        pair.first->deleteLater();
+        deleted.append(pair.first);
+    }
+    _replaced.clear();
 }
 
 void ProfilesController::closePackage(){

@@ -62,7 +62,8 @@ public:
     inline bool importHasCorruptProfiles() const { return _importCorrupt; }
     // Step 3: beginImport(), then for each profile importConflict() (the existing profile
     // with the same ID, or null) and importProfile() with the user's choice: Overwrite,
-    // KeepBoth (new ID) or Skip; NoConflict when there is none. finishImport() stores the list.
+    // KeepBoth (new ID) or Skip; NoConflict when there is none. finishImport() stores the list
+    // and deletes the overwritten profiles; if one was current, its replacement becomes current.
     enum ImportChoice { Overwrite, KeepBoth, Skip, NoConflict };
     void beginImport();
     KbProfile* importConflict(int index) const;
@@ -90,6 +91,8 @@ private:
     QStringList _importNames;
     bool _importCorrupt = false;
     QList<KbProfile*> _importList;
+    // Profiles replaced by Overwrite and their imported replacements, for finishImport()
+    QList<QPair<KbProfile*, KbProfile*>> _replaced;
 };
 
 #endif // PROFILESCONTROLLER_H
