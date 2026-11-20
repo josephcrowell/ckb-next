@@ -45,6 +45,10 @@ public:
     // Checks for a new ckb-next version unless Program/DisableAutoUpdCheck is set
     void autoCheckForUpdates();
 
+    // Whether the user can switch between devices; off while a macro is recorded
+    inline bool tabsEnabled() const { return _tabsEnabled; }
+    void setTabsEnabled(bool enabled);
+
 public slots:
     void quit();
     // Checks for a new ckb-next version and emits updateChecked (no-op with DISABLE_UPDATER)
@@ -57,6 +61,7 @@ signals:
     void switchToProfileCLI(QString profile);
     void switchToModeCLI(QString mode);
     void statusTextChanged(const QString& text);
+    void tabsEnabledChanged(bool enabled);
     // Emitted once per device when a newer firmware is available
     void firmwareUpdateAvailable(Kb* device, CkbVersionNumber version);
 
@@ -82,6 +87,7 @@ private:
     // Devices whose firmware update has already been offered
     QSet<Kb*> fwNotified;
     QString _statusText;
+    bool _tabsEnabled = true;
     std::function<bool()> windowVisible;
 };
 

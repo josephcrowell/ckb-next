@@ -1,13 +1,18 @@
 #include "rebindcontroller.h"
 #include <QCoreApplication>
 #include <QRegularExpression>
+#include "ckbsettings.h"
+#include "kb.h"
 #include "kbanim.h"
 #include "kbbind.h"
+#include "kbmanager.h"
 #include "kblight.h"
 #include "kbmode.h"
 #include "kbperf.h"
 #include "kbprofile.h"
 #include "keyaction.h"
+#include "macroline.h"
+#include "macroreader.h"
 #include "macrotablemodel.h"
 
 const int RebindController::DPI_OFFSET = -KeyAction::DPI_CYCLE_UP + 1;
@@ -55,6 +60,12 @@ RebindController::RebindController(QObject* parent) :
     _names[FunctionKeys][_keys[FunctionKeys].indexOf("ins")] = "Help";
     _names[NumpadKeys][_keys[NumpadKeys].indexOf("numlock")] = "Clear";
 #endif
+}
+
+RebindController::~RebindController(){
+    // Recording stops with the UI, e.g. when the device goes away while recording
+    if(_reader)
+        _reader->deleteLater();
 }
 
 void RebindController::setBind(KbBind* newBind, KbProfile* newProfile){
@@ -412,4 +423,85 @@ void RebindController::resetSelection(){
 
 void RebindController::unbindSelection(){
     _bind->noAction(_selection);
+}
+
+RebindController::CaptureType RebindController::defaultCaptureType() const {
+    if(_bind->map().isKeyboard())
+        return CAPTURE_CURRENT_DEVICE;
+    // Check if there are any daemon-managed keyboards connected, and if so, capture from them too
+    foreach(const Kb* dev, KbManager::devices()){
+        if(dev->isKeyboard())
+            return CAPTURE_ALL_DAEMON_DEVICES;
+    }
+    // If none were found, capture from everything as a last resort
+    return CAPTURE_ALL_KEYBOARDS;
+}
+
+bool RebindController::captureAllWarningSuppressed(){
+    return CkbSettings::get("UI/Bind/SuppressCaptureAllWarning", false).toBool();
+}
+
+void RebindController::setCaptureAllWarningSuppressed(bool suppressed){
+    CkbSettings::set("UI/Bind/SuppressCaptureAllWarning", suppressed);
+}
+
+void RebindController::startRecording(CaptureType type){
+    QStringList devicePaths;
+
+    // Enable the notify node
+    if(type == CAPTURE_CURRENT_DEVICE) {
+        _bind->handleNotificationChannel(true);
+        devicePaths.append(_bind->getMacroPath());
+    } else if (type == CAPTURE_ALL_DAEMON_DEVICES) {
+        foreach(Kb* dev, KbManager::devices()) {
+            dev->currentBind()->handleNotificationChannel(true);
+            devicePaths.append(dev->getMacroPath());
+        }
+    }
+
+    _leftMouseClicked = false;
+    _recordingType = type;
+
+    _reader = new MacroReader(devicePaths);
+    connect(_reader, &MacroReader::macroLineRead, this, &RebindController::lineRead);
+    connect(_reader, &MacroReader::macroReadError, this, &RebindController::recordingError);
+}
+
+bool RebindController::stopRecording(CaptureType type, bool clickedByMouse){
+    _reader->deleteLater();
+    _reader = nullptr;
+
+    // Disable the macro notify node
+    if(type == CAPTURE_CURRENT_DEVICE) {
+        _bind->handleNotificationChannel(false);
+    } else if (type == CAPTURE_ALL_DAEMON_DEVICES) {
+        foreach(Kb* dev, KbManager::devices()) {
+            dev->currentBind()->handleNotificationChannel(false);
+        }
+    }
+
+    // Remove the last mouse click if the user stopped
+    // the capture by clicking on the Stop Recording button
+    if(type != CAPTURE_ALL_KEYBOARDS && _leftMouseClicked && clickedByMouse){
+        _macros->removeLastMouseLeftClick();
+        return true;
+    }
+    return false;
+}
+
+void RebindController::resetRecordingTimer(){
+    if(_reader)
+        _reader->resetTimer();
+}
+
+void RebindController::recordKeyEvent(int keycode, bool down, Qt::KeyboardModifiers modifiers){
+    if(_reader && _recordingType == CAPTURE_ALL_KEYBOARDS)
+        _reader->translateQKeyEvent(keycode, down, modifiers);
+}
+
+void RebindController::lineRead(QString line, qint64 ustime, bool keydown){
+    _macros->append(MacroLine(line, ustime, ustime, keydown));
+    if(line == "mouse1")
+        _leftMouseClicked = true;
+    emit lineRecorded(line, keydown);
 }

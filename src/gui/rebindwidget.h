@@ -4,7 +4,6 @@
 #include <QWidget>
 #include "kbbind.h"
 #include "kbprofile.h"
-#include "macroreader.h"
 #include "macroline.h"
 #include "macrotablemodel.h"
 #include "rebindcontroller.h"
@@ -84,16 +83,9 @@ private:
     void setBox(QWidget* box);
     // The action the controls describe
     RebindController::ActionForm currentForm() const;
-    MacroReader* macroReader;
-    void macroLineRead(QString line, qint64 ustime, bool keydown);
-    enum CAPTURE_TYPE {
-        CAPTURE_CURRENT_DEVICE,
-        CAPTURE_ALL_DAEMON_DEVICES,
-        CAPTURE_ALL_KEYBOARDS,
-    } captureType;
+    void macroLineRead(const QString& line, bool keydown);
     void tabChanged(int idx);
     void insertIntoMacroPreview(const bool keydown, const bool printable, const QString& line);
-    bool leftMouseClicked;
     MacroDropdownDelegate* macroDelegate;
 };
 

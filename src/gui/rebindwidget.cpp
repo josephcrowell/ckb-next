@@ -1,11 +1,11 @@
 #include <QStandardPaths>
 #include "rebindwidget.h"
 #include "ui_rebindwidget.h"
+#include <QCheckBox>
 #include <QDebug>
 #include <QMessageBox>
-#include "kbmanager.h"
+#include "appcontroller.h"
 #include "macrostringeditdialog.h"
-#include "mainwindow.h"
 #include "rebindcontroller.h"
 #include <QScrollBar>
 
@@ -25,7 +25,7 @@ static inline void setUiElementsEnabled(Ui::RebindWidget* const ui, const bool e
     ui->rep_debounce_input->setEnabled(e);
     ui->rep_delay_input->setEnabled(e);
     ui->captureTypeBox->setEnabled(e);
-    MainWindow::mainWindow->setTabsEnabled(e);
+    AppController::instance()->setTabsEnabled(e);
     ui->tabWidget->tabBar()->setEnabled(e);
     ui->cancelButton->setEnabled(e);
     setLocalUiElementsEnabled(ui, e);
@@ -34,7 +34,6 @@ static inline void setUiElementsEnabled(Ui::RebindWidget* const ui, const bool e
 RebindWidget::RebindWidget(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::RebindWidget), controller(new RebindController(this)),
-    macroReader(nullptr), leftMouseClicked(false),
     macroDelegate(new MacroDropdownDelegate)
 {
     ui->setupUi(this);
@@ -77,14 +76,30 @@ RebindWidget::RebindWidget(QWidget *parent) :
     connect(macroLines, &QAbstractTableModel::modelReset, this, &RebindWidget::regeneratePreview);
     ui->tableView->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     ui->tableView->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+
+    // Macro recording
+    connect(controller, &RebindController::lineRecorded, this, &RebindWidget::macroLineRead);
+    // Only emitted while recording, when the preview eats the key events
+    connect(ui->macroPreview, &NoUserInputTextEdit::macroKeyEvent, controller, &RebindController::recordKeyEvent);
+    // Pause macro recording if an error is detected (unknown keypress)
+    connect(controller, &RebindController::recordingError, this, [this](QString k, QString m) {
+        ui->macroPreview->eatKeyEvents(false);
+        ui->macroPreview->releaseKeyboard();
+        QMessageBox::warning(this, tr("Unknown key combination pressed"), tr("An unknown key combination (%1, %2) has been pressed.\n"
+                                                                 "Make sure your keyboard layout is set to English - United States while recording macros.")
+                             .arg(k, m));
+        ui->macroPreview->grabKeyboard();
+        ui->macroPreview->eatKeyEvents(true);
+        controller->resetRecordingTimer();
+    });
 }
 
 RebindWidget::~RebindWidget(){
     // Clean things up if the daemon died while we were recording a macro
-    if(macroReader){
+    // (the controller stops reading)
+    if(controller->isRecording()){
         // re-enable everything
         setUiElementsEnabled(ui, true);
-        macroReader->deleteLater();
     }
     delete ui;
     delete macroDelegate;
@@ -601,27 +616,11 @@ void RebindWidget::on_animButton_clicked(bool checked){
 }
 
 void RebindWidget::on_btnStartMacro_clicked() {
-    KbBind* bind = controller->bind();
     // Get the capture type
-    CAPTURE_TYPE type = static_cast<CAPTURE_TYPE>(ui->captureTypeBox->currentIndex());
+    const RebindController::CaptureType type = static_cast<RebindController::CaptureType>(ui->captureTypeBox->currentIndex());
     // If we're already capturing, stop
-    if(macroReader) {
-        macroReader->deleteLater();
-        macroReader = nullptr;
-
-        // Disable the macro notify node
-        if(type == CAPTURE_TYPE::CAPTURE_CURRENT_DEVICE) {
-            bind->handleNotificationChannel(false);
-        } else if (type == CAPTURE_TYPE::CAPTURE_ALL_DAEMON_DEVICES) {
-            foreach(Kb* dev, KbManager::devices()) {
-                dev->currentBind()->handleNotificationChannel(false);
-            }
-        }
-
-        // Remove the last mouse click if the user stopped
-        // the capture by clicking on the Stop Recording button
-        if(type != CAPTURE_TYPE::CAPTURE_ALL_KEYBOARDS && leftMouseClicked && ui->btnStartMacro->isClickedByMouse()){
-            controller->macros()->removeLastMouseLeftClick();
+    if(controller->isRecording()) {
+        if(controller->stopRecording(type, ui->btnStartMacro->isClickedByMouse())){
             QString oldstr = ui->macroPreview->toPlainText();
             oldstr.replace(QRegularExpression("<mouse1>$"), QString());
             ui->macroPreview->setPlainText(oldstr);
@@ -642,38 +641,7 @@ void RebindWidget::on_btnStartMacro_clicked() {
     ui->macroPreview->setFocus();
 
     // Start the appropriate capture mode
-    QStringList devicePaths;
-
-    // Enable the notify node
-    if(type == CAPTURE_TYPE::CAPTURE_CURRENT_DEVICE) {
-        bind->handleNotificationChannel(true);
-        devicePaths.append(bind->getMacroPath());
-    } else if (type == CAPTURE_TYPE::CAPTURE_ALL_DAEMON_DEVICES) {
-        foreach(Kb* dev, KbManager::devices()) {
-            dev->currentBind()->handleNotificationChannel(true);
-            devicePaths.append(dev->getMacroPath());
-        }
-    }
-
-    leftMouseClicked = false;
-
-    macroReader = new MacroReader(devicePaths);
-    connect(macroReader, &MacroReader::macroLineRead, this, &RebindWidget::macroLineRead);
-
-    if(type == CAPTURE_TYPE::CAPTURE_ALL_KEYBOARDS){
-        connect(ui->macroPreview, &NoUserInputTextEdit::macroKeyEvent, macroReader, &MacroReader::translateQKeyEvent);
-        // Pause macro recording if an error is detected (unknown keypress)
-        connect(macroReader, &MacroReader::macroReadError, this, [this](QString k, QString m) {
-            ui->macroPreview->eatKeyEvents(false);
-            ui->macroPreview->releaseKeyboard();
-            QMessageBox::warning(this, tr("Unknown key combination pressed"), tr("An unknown key combination (%1, %2) has been pressed.\n"
-                                                                     "Make sure your keyboard layout is set to English - United States while recording macros.")
-                                 .arg(k, m));
-            ui->macroPreview->grabKeyboard();
-            ui->macroPreview->eatKeyEvents(true);
-            macroReader->resetTimer();
-        });
-    }
+    controller->startRecording(type);
 
     // Disable the buttons while recording
     ui->btnStartMacro->setText(tr("Stop Recording"));
@@ -708,46 +676,31 @@ void RebindWidget::insertIntoMacroPreview(const bool keydown, const bool printab
     }
 }
 
-void RebindWidget::macroLineRead(QString line, qint64 ustime, bool keydown){
+void RebindWidget::macroLineRead(const QString& line, bool keydown){
+    // The controller has appended the event to the macro
     const bool printable = (line.length() == 1);
-    controller->macros()->append(MacroLine(line, ustime, ustime, keydown));
 
     // Add keystroke to the key actions textedit
     // "+k", "-k", these can be represented as text
-    if(line == "mouse1")
-        leftMouseClicked = true;
-    else
+    if(line != "mouse1")
         ui->macroPreview->setFocus();
     insertIntoMacroPreview(keydown, printable, line);
 }
 
 void RebindWidget::tabChanged(int idx){
-    if(macroReader)
+    if(controller->isRecording())
         return;
     // We monitor the tabs, and when we switch to the macro tab, we select the appropriate capture method
-    if(ui->tabWidget->currentWidget() == ui->macroTab){
-        if(controller->bind()->map().isKeyboard()){
-            ui->captureTypeBox->setCurrentIndex(CAPTURE_TYPE::CAPTURE_CURRENT_DEVICE);
-        } else {
-            // Check if there are any daemon-managed keyboards connected, and if so, capture from them too
-            foreach(const Kb* dev, KbManager::devices()){
-                if(dev->isKeyboard()){
-                    ui->captureTypeBox->setCurrentIndex(CAPTURE_TYPE::CAPTURE_ALL_DAEMON_DEVICES);
-                    return;
-                }
-            }
-            // If none were found, capture from everything as a last resort
-            ui->captureTypeBox->setCurrentIndex(CAPTURE_TYPE::CAPTURE_ALL_KEYBOARDS);
-        }
-    }
+    if(ui->tabWidget->currentWidget() == ui->macroTab)
+        ui->captureTypeBox->setCurrentIndex(controller->defaultCaptureType());
 }
 
 // This is automatically called whenever setCurrentIndex is called programmatically as well
 void RebindWidget::on_captureTypeBox_currentIndexChanged(int index){
-    captureType = static_cast<CAPTURE_TYPE>(index);
-    if(captureType != CAPTURE_ALL_KEYBOARDS)
+    controller->setCaptureType(static_cast<RebindController::CaptureType>(index));
+    if(controller->captureType() != RebindController::CAPTURE_ALL_KEYBOARDS)
         return;
-    if(CkbSettings::get("UI/Bind/SuppressCaptureAllWarning", false).toBool())
+    if(RebindController::captureAllWarningSuppressed())
         return;
     QMessageBox msg;
     // MessageBox takes ownership of the checkbox, so we don't need to delete it
@@ -759,7 +712,7 @@ void RebindWidget::on_captureTypeBox_currentIndexChanged(int index){
                    "Make sure your keyboard is switched to it before recording."));
     msg.setWindowTitle(tr("Record from all keyboards"));
     msg.exec();
-    CkbSettings::set("UI/Bind/SuppressCaptureAllWarning", msg.checkBox()->isChecked());
+    RebindController::setCaptureAllWarningSuppressed(msg.checkBox()->isChecked());
 }
 
 int RebindWidget::regeneratePreview(){

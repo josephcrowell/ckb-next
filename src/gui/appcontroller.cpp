@@ -94,6 +94,13 @@ void AppController::autoCheckForUpdates(){
         checkForUpdates();
 }
 
+void AppController::setTabsEnabled(bool enabled){
+    if(_tabsEnabled == enabled)
+        return;
+    _tabsEnabled = enabled;
+    emit tabsEnabledChanged(enabled);
+}
+
 void AppController::checkForUpdates(){
 #ifndef DISABLE_UPDATER
     CkbUpdater* updater = new CkbUpdater(this);

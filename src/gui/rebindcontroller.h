@@ -9,6 +9,7 @@
 
 class KbBind;
 class KbProfile;
+class MacroReader;
 class MacroTableModel;
 
 // UI-independent logic of the rebinding panel, shared by the Widgets and QML UIs.
@@ -20,6 +21,9 @@ class RebindController : public QObject
 public:
     enum Tab { TAB_KB = 0, TAB_MOUSE = 1, TAB_ANIM = 2, TAB_SPECIAL = 3, TAB_PROGRAM = 4, TAB_MACRO = 5 };
     enum KeyList { TypingKeys, ModifierKeys, FunctionKeys, NumpadKeys, MediaKeys, MouseButtons, MouseExtraButtons, WheelDirections, KEY_LIST_COUNT };
+    // Where macros are recorded from: this device's notify node, every device's, or key
+    // events passed to recordKeyEvent
+    enum CaptureType { CAPTURE_CURRENT_DEVICE, CAPTURE_ALL_DAEMON_DEVICES, CAPTURE_ALL_KEYBOARDS };
 
     // DPI list: index 0 is none, then cycle up, cycle down, the stages (sniper first) and custom
     static const int DPI_OFFSET;
@@ -55,6 +59,7 @@ public:
     };
 
     explicit RebindController(QObject* parent = nullptr);
+    ~RebindController();
 
     inline KbBind* bind() const { return _bind; }
     inline KbProfile* profile() const { return _profile; }
@@ -93,7 +98,35 @@ public:
     void resetSelection();
     void unbindSelection();
 
+    // Macro recording. The capture type offered when the macro tab opens: this device for
+    // keyboards, else every daemon device if one is a keyboard, else all keyboards.
+    CaptureType defaultCaptureType() const;
+    inline CaptureType captureType() const { return _captureType; }
+    inline void setCaptureType(CaptureType type) { _captureType = type; }
+    // "Record from all keyboards" warning: UI/Bind/SuppressCaptureAllWarning
+    static bool captureAllWarningSuppressed();
+    static void setCaptureAllWarningSuppressed(bool suppressed);
+    inline bool isRecording() const { return _reader != nullptr; }
+    // Turns on the notify nodes for the capture type and starts reading recorded events
+    void startRecording(CaptureType type);
+    // Stops reading and turns the notify nodes off. Removes the last left click when the
+    // recording was stopped with a mouse click on the device; returns true if it did.
+    bool stopRecording(CaptureType type, bool clickedByMouse);
+    // Resets the delay before the next recorded event
+    void resetRecordingTimer();
+
+public slots:
+    // Key events of the UI, recorded while recording from all keyboards
+    void recordKeyEvent(int keycode, bool down, Qt::KeyboardModifiers modifiers);
+
+signals:
+    // An event was recorded and appended to macros()
+    void lineRecorded(const QString& line, bool keydown);
+    // A key event while recording from all keyboards couldn't be translated
+    void recordingError(QString key, QString modifiers);
+
 private:
+    void lineRead(QString line, qint64 ustime, bool keydown);
     // The action the form describes, or a null string if it has none
     QString action(const ActionForm& form) const;
     bool appliesMacro(const ActionForm& form) const;
@@ -106,6 +139,11 @@ private:
     QStringList _modeNames;
     QList<QUuid> _animationIds;
     QString _loadedAction;
+    CaptureType _captureType = CAPTURE_CURRENT_DEVICE;
+    // Recording
+    MacroReader* _reader = nullptr;
+    CaptureType _recordingType = CAPTURE_CURRENT_DEVICE;
+    bool _leftMouseClicked = false;
     MacroTableModel* _macros;
 };
 

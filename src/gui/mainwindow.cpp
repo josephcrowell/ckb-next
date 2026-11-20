@@ -123,6 +123,7 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
     connect(KbManager::scanTimer(), SIGNAL(timeout()), this, SLOT(timerTick()));
     connect(app, &AppController::showWindowRequested, this, &MainWindow::showWindow);
     connect(app, &AppController::firmwareUpdateAvailable, this, &MainWindow::firmwareUpdateAvailable);
+    connect(app, &AppController::tabsEnabledChanged, this, &MainWindow::setTabsEnabled);
 
     // Set up tray icon
     restoreAction = new QAction(tr("Restore"), this);
