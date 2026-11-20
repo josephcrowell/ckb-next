@@ -16,6 +16,8 @@ FwUpgradeDialog::FwUpgradeDialog(QWidget* parent, CkbVersionNumber newV, const Q
 
     connect(controller, &FirmwareController::progress, this, &FwUpgradeDialog::fwUpdateProgress);
     connect(controller, &FirmwareController::finished, this, &FwUpgradeDialog::fwUpdateFinished);
+    // Nothing to install any more: close as if cancelled
+    connect(controller, &FirmwareController::deviceLost, this, &FwUpgradeDialog::on_cancelButton_clicked);
 }
 
 FwUpgradeDialog::~FwUpgradeDialog(){
@@ -49,6 +51,11 @@ int FwUpgradeDialog::exec(){
             QMessageBox::warning(parentWidget(), tr("Error"), tr("<center>There was a problem with the downloaded file.<br />Please try again later.</center>"));
             return QDialog::Rejected;
         }
+    }
+    // The device went away while downloading
+    if(!controller->hasDevice()){
+        hide();
+        return QDialog::Rejected;
     }
     // Save temporary file
     if(!controller->saveBlob()){

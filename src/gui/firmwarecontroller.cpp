@@ -88,6 +88,7 @@ bool FirmwareController::canStart() const {
 }
 
 void FirmwareController::start(){
+    _started = true;
     _device->fwUpdate(_savePath);
 }
 
@@ -103,6 +104,12 @@ void FirmwareController::deviceFinished(bool succeeded){
 
 void FirmwareController::deviceRemoved(){
     _device = nullptr;
+    if(!_started){
+        // Nothing was installed
+        cleanBlob();
+        emit deviceLost();
+        return;
+    }
     // Assume success if upgrade in progress
     if(!_savePath.isEmpty())
         deviceFinished(true);

@@ -11,7 +11,7 @@ class Kb;
 // UI-independent logic of a firmware update, shared by the Widgets and QML UIs. Steps: download
 // the newest firmware if no file was given, check it fits the device, save it for the daemon,
 // then start(); progress and finished() follow. If the device goes away during the update, it
-// counts as a success (it restarts to finish).
+// counts as a success (it restarts to finish); before start(), deviceLost() is emitted.
 class FirmwareController : public QObject
 {
     Q_OBJECT
@@ -35,6 +35,7 @@ public:
     // Saves the firmware to a temporary file for the daemon; false if it couldn't be
     bool saveBlob();
 
+    inline bool hasDevice() const { return _device != nullptr; }
     // Whether the update can start (firmware saved and the device still there)
     bool canStart() const;
     void start();
@@ -43,6 +44,8 @@ signals:
     // Only positive values are passed on
     void progress(int current, int total);
     void finished(bool succeeded);
+    // The device went away before the update started
+    void deviceLost();
 
 private:
     void deviceProgress(int current, int total);
@@ -55,6 +58,7 @@ private:
     QByteArray _blob;
     // Where the firmware is saved; empty if it isn't
     QString _savePath;
+    bool _started = false;
 };
 
 #endif // FIRMWARECONTROLLER_H
