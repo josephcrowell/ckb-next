@@ -67,9 +67,15 @@ void PerfController::rawFromMode(HwMode mode, bool& software, KbPerf::i_hw& hard
 }
 
 void PerfController::setPerf(KbPerf* newPerf, KbProfile* newProfile){
+    if(_perf != newPerf || !_dpiConnection){
+        // Only the shown perf moves the stage highlight. Disconnecting through the handle is
+        // safe even if the previous perf was deleted with its mode (the handle is then
+        // invalid, which also catches a new perf at the old address).
+        disconnect(_dpiConnection);
+        _dpiConnection = connect(newPerf, &KbPerf::dpiChanged, this, &PerfController::dpiChanged);
+    }
     _perf = newPerf;
     _profile = newProfile;
-    connect(_perf, &KbPerf::dpiChanged, this, &PerfController::dpiChanged);
 }
 
 void PerfController::copyToModes(const QList<KbMode*>& modes){

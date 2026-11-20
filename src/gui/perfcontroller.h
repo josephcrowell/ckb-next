@@ -81,7 +81,7 @@ public:
     int dpiIndex() const;
 
 signals:
-    // Forwarded KbPerf::dpiChanged of every perf set so far
+    // Forwarded KbPerf::dpiChanged of the current perf
     void dpiChanged(int index);
 
 private:
@@ -89,6 +89,7 @@ private:
     KbProfile* _profile;
     bool _xyLink;
     bool _darkCore;
+    QMetaObject::Connection _dpiConnection;
 };
 
 #endif // PERFCONTROLLER_H
