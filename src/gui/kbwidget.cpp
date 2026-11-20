@@ -4,10 +4,7 @@
 #include <QMessageBox>
 #include <QUrl>
 #include <QTimer>
-#include "appcontroller.h"
-#include "ckbsettings.h"
 #include "fwupgradedialog.h"
-#include "kbfirmware.h"
 #include "kbwidget.h"
 #include "kblightwidget.h"
 #include "kbprofiledialog.h"
@@ -33,7 +30,7 @@ KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector
     connect(controller, &DeviceController::profilesChanged, this, &KbWidget::updateProfileList);
     connect(controller, &DeviceController::profileSwitched, ui->profileBox, &QComboBox::setCurrentIndex);
     connect(device, &Kb::modeChanged, this, &KbWidget::modeChanged);
-    connect(device, &Kb::infoUpdated, this, &KbWidget::devUpdate);
+    connect(controller, &DeviceController::infoUpdated, this, &KbWidget::devUpdate);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     connect(ui->batteryTrayBox, &QCheckBox::checkStateChanged, this, &KbWidget::batteryTrayBox_checkStateChanged);
 #else // QT_VERSION < 6.7.0
@@ -72,8 +69,8 @@ KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector
         ui->mPerfWidget->setDarkCore();
 
     // If the device is supports it, show the battery
-    if(device->features.contains("battery")){
-        connect(device, &Kb::batteryChanged, this, &KbWidget::updateBattery);
+    if(controller->hasBattery()){
+        connect(controller, &DeviceController::batteryChanged, this, &KbWidget::updateBattery);
         // The device's battery tray icon, shown or hidden through the check box below
         batteryIcon = new BatteryStatusTrayIcon(device->usbModel, this);
         connect(device, &Kb::batteryChanged, batteryIcon, &BatteryStatusTrayIcon::setBattery);
@@ -85,25 +82,23 @@ KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector
     }
 
     // Hide poll rate and FW update as appropriate
-    if(device->pollrate == Kb::POLLRATE_UNKNOWN){
+    if(!controller->hasPollRate()){
         ui->pollRateBox->hide();
         ui->pollLabel2->hide();
         ui->horizontalLayout_2->removeItem(ui->horizontalSpacer_4);
         delete ui->horizontalSpacer_4;
         ui->horizontalSpacer_4 = nullptr;
     }
-    if(!device->features.contains("fwupdate")){
+    if(!controller->hasFirmwareUpdates()){
         ui->fwUpdButton->hide();
         ui->fwUpdLabel->hide();
         ui->fwUpdLayout->removeItem(ui->fwUpdLayout->itemAt(1));
     }
-    // Remove unsupported pollrates
+    // Remove unsupported pollrates (the fastest ones, at the top)
     // Block signals so that the pollrate doesn't change
     bool block = ui->pollRateBox->blockSignals(true);
-    if(device->maxpollrate != Kb::POLLRATE_UNKNOWN){
-        for(int i = 0; i < (Kb::POLLRATE_COUNT - 1) - device->maxpollrate; i++)
-            ui->pollRateBox->removeItem(0);
-    }
+    while(ui->pollRateBox->count() > controller->pollRates().count())
+        ui->pollRateBox->removeItem(0);
     ui->pollRateBox->blockSignals(block);
 
     // Remove binding tab if the device doesn't support it
@@ -118,65 +113,28 @@ KbWidget::KbWidget(QWidget *parent, Kb *_device, XWindowDetector* windowDetector
         ui->hwSaveButton->setDisabled(true);
         ui->hwSaveButton->setToolTip(QString(tr("Saving to hardware is not supported on this device.")));
     }
-    // Read device layout
-    if(device->features.contains("bind")){
+    // Read and set the device layout
+    controller->setupLayout();
+    const QList<QPair<int, QString>>& layouts = controller->layouts();
+    if(!layouts.isEmpty()){
         // Clear the "Default" value
         ui->layoutBox->clear();
 
-        // Load the current device's layout from the settings
-        QString layoutSettingsPath("Devices/%1");
-        CkbSettings settings(layoutSettingsPath.arg(device->usbSerial));
-
-        QList<QPair<int, QString>> layoutnames = KeyMap::layoutNames(device->hwlayout);
-
         // Enable the ComboBox only if there is more than one supported layout
-        if(layoutnames.count() > 1)
+        if(layouts.count() > 1)
             ui->layoutBox->setEnabled(true);
 
-        for(int i = 0; i < layoutnames.count(); i++)
-            ui->layoutBox->addItem(layoutnames[i].second, layoutnames[i].first);
+        for(int i = 0; i < layouts.count(); i++)
+            ui->layoutBox->addItem(layouts[i].second, layouts[i].first);
 
-        KeyMap::Layout layout = KeyMap::getLayout(settings.value("hwLayout").toString());
-        if(layout == KeyMap::NO_LAYOUT){
-            // If the layout hasn't been set yet, first check if one was set globally from a previous version
-            // If not, try to pick an appropriate one that's supported by the hardware
-            KeyMap::Layout oldLayout = KeyMap::getLayout(CkbSettings::get("Program/KbdLayout").toString());
-            if(oldLayout == KeyMap::NO_LAYOUT){
-                layout = KeyMap::locale(&layoutnames);
-            } else {
-                CkbSettings::set("Program/KbdLayout", "");
-                layout = oldLayout;
-            }
-        }
-        // Find the position of the layout in the QComboBox and set it
-        int layoutpos = -1;
-        if(layout != KeyMap::NO_LAYOUT){
-            for(int i = 0; i < layoutnames.count(); i++){
-                if(layoutnames.at(i).first == (int)layout){
-                    layoutpos = i;
-                    break;
-                }
-            }
-        }
-        // If no layout was found, pick the first one from the list
-        if(layoutpos == -1){
-            layout = (KeyMap::Layout)layoutnames.at(0).first;
-            layoutpos = 0;
-        }
-
-        ui->layoutBox->setCurrentIndex(layoutpos);
-
-        // Set the layout and save it
-        device->layout(layout, false);
+        ui->layoutBox->setCurrentIndex(controller->layoutIndex());
     }
-    else
-        device->layout(KeyMap::GB, false);
 
     // Set max DPI for mice
     if(device->isMouse())
         ui->mPerfWidget->setMaxDpi(device->getMaxDpi());
 
-    if(!device->adjrate){
+    if(!controller->canSetPollRate()){
         ui->pollRateBox->setEnabled(false);
         ui->pollRateBox->setToolTip(tr("This device does not support setting the poll rate through software."));
     }
@@ -247,10 +205,7 @@ void KbWidget::batteryTrayBox_checkStateChanged(Qt::CheckState state){
 #define CHECK_VALUE_UNCHECKED 0
 void KbWidget::batteryTrayBox_stateChanged(int state){
 #endif
-    if(!device->features.contains("battery"))
-        return;
-    device->setShowBatteryIndicator(state != CHECK_VALUE_UNCHECKED);
-    device->needsSave();
+    controller->setShowBatteryIndicator(state != CHECK_VALUE_UNCHECKED);
 }
 
 void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
@@ -321,29 +276,29 @@ void KbWidget::on_modesList_customContextMenuRequested(const QPoint& pos){
 
 void KbWidget::devUpdate(){
     // Update device tab
-    ui->devLabel->setText(device->usbModel);
-    ui->serialLabel->setText(device->usbSerial);
-    ui->fwLabel->setText(device->firmware.app.toString());
-    ui->bldValLabel->setText(device->firmware.bld.toString());
+    ui->devLabel->setText(controller->modelName());
+    ui->serialLabel->setText(controller->serial());
+    ui->fwLabel->setText(controller->firmwareVersion());
+    ui->bldValLabel->setText(controller->bootloaderVersion());
     // Not all WL devices have a radio BLD so these must be kept separate
-    if(device->firmware.radioapp.isNull()){
+    if(!controller->hasRadioFirmware()){
         ui->wlLabel->setVisible(false);
         ui->wlValLabel->setVisible(false);
     } else {
-        ui->wlValLabel->setText(device->firmware.radioapp.toString());
+        ui->wlValLabel->setText(controller->radioFirmwareVersion());
     }
-    if(device->firmware.radiobld.isNull()){
+    if(!controller->hasRadioBootloader()){
         ui->wlBldLabel->setVisible(false);
         ui->wlBldValLabel->setVisible(false);
     } else {
-        ui->wlBldValLabel->setText(device->firmware.radiobld.toString());
+        ui->wlBldValLabel->setText(controller->radioBootloaderVersion());
     }
     // This is needed so that the currentIndexChanged event doesn't fire
     // If it does, we'll end up with an always greyed out box when pollrate != 1
     bool block = ui->pollRateBox->blockSignals(true);
-    ui->pollRateBox->setCurrentIndex(getPollRateBoxIdx(device->pollrate));
+    ui->pollRateBox->setCurrentIndex(controller->pollRateIndex());
     ui->pollRateBox->blockSignals(block);
-    ui->batteryTrayBox->setChecked(device->showBatteryIndicator());
+    ui->batteryTrayBox->setChecked(controller->showBatteryIndicator());
 }
 
 void KbWidget::updateBattery(uint battery, BatteryStatus charging){
@@ -368,16 +323,7 @@ void KbWidget::on_tabWidget_currentChanged(int index){
 }
 
 void KbWidget::updateFwButton(){
-    if(!AppController::instance()->firmware()->hasDownloaded())
-        ui->fwUpdButton->setText(tr("Check for updates"));
-    else {
-        CkbVersionNumber newVersion = AppController::instance()->firmware()->versionForBoard(device->productID);
-        const CkbVersionNumber& oldVersion = device->firmware.app;
-        if(newVersion.isNull() || newVersion <= oldVersion)
-            ui->fwUpdButton->setText(tr("Up to date"));
-        else
-            ui->fwUpdButton->setText(tr("Upgrade to v%1").arg(newVersion.toString()));
-    }
+    ui->fwUpdButton->setText(controller->firmwareButtonText());
 }
 
 void KbWidget::setTabBarEnabled(const bool e){
@@ -392,22 +338,22 @@ void KbWidget::on_fwUpdButton_clicked(){
     // If alt is pressed, ignore upgrades and go straight to the manual prompt
     if(!(qApp->keyboardModifiers() & Qt::AltModifier)){
         // Check version numbers
-        if(!AppController::instance()->firmware()->hasDownloaded()){
+        if(!controller->firmwareListDownloaded()){
             ui->fwUpdButton->setText(tr("Checking..."));
             ui->fwUpdButton->setEnabled(false);
         }
-        const CkbVersionNumber newVersion = AppController::instance()->firmware()->versionForBoard(device->productID, true);
-        const CkbVersionNumber& oldVersion = device->firmware.app;
+        CkbVersionNumber newVersion;
+        const DeviceController::FirmwareCheck check = controller->checkFirmware(newVersion);
         ui->fwUpdButton->setEnabled(true);
         updateFwButton();
-        if(newVersion.isNull()){
+        if(check == DeviceController::FIRMWARE_CHECK_FAILED){
             if(QMessageBox::question(this, tr("Firmware update"), tr("<center>There was a problem getting the status for this device.<br />Would you like to select a file manually?</center>")) != QMessageBox::Yes)
                 return;
             // "Yes" -> fall through to browse file
-        } else if(newVersion.CkbTooOld()){
+        } else if(check == DeviceController::FIRMWARE_NEEDS_NEWER_CKB){
             QMessageBox::information(this, tr("Firmware update"), tr("<center>There is a new firmware available for this device (v%1).<br />However, it requires a newer version of ckb-next.<br />Please upgrade ckb-next and try again.</center>").arg(newVersion.toString()));
             return;
-        } else if(newVersion <= oldVersion){
+        } else if(check == DeviceController::FIRMWARE_UP_TO_DATE){
             if(QMessageBox::question(this, tr("Firmware update"), tr("<center>Your firmware is already up to date.<br />Would you like to select a file manually?</center>")) != QMessageBox::Yes)
                 return;
             // "Yes" -> fall through to browse file
@@ -436,22 +382,14 @@ void KbWidget::on_fwUpdButton_clicked(){
 void KbWidget::on_layoutBox_activated(int index){
     // Can't use currentIndexChanged as it fires when the GUI is first drawn
     // before the layout has been initialised
-    int idxLayout = ui->layoutBox->itemData(index).toInt();
-    KeyMap::Layout layout = (KeyMap::Layout)idxLayout;
-    // Only set the layout if it was changed
-    if(layout == device->getCurrentLayout())
-        return;
-    QString layoutSettingsPath("Devices/%1/hwLayout");
-    CkbSettings::set(layoutSettingsPath.arg(device->usbSerial), KeyMap::getLayout(layout));
-    device->layout(layout, true);
+    controller->setLayout(index);
 }
 
 void KbWidget::on_pollRateBox_currentIndexChanged(int arg1) {
     if(arg1 == -1)
         return;
-    const QString str = ui->pollRateBox->itemText(arg1);
     ui->pollRateBox->setEnabled(false);
-    device->setPollRate(str.left(str.indexOf(QLatin1String(" ms"))));
+    controller->setPollRate(arg1);
 }
 
 void KbWidget::openEventMgr(KbMode* mode) {

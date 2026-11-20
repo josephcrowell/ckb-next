@@ -1,6 +1,8 @@
 #include "devicecontroller.h"
 #include "appcontroller.h"
+#include "ckbsettings.h"
 #include "kb.h"
+#include "kbfirmware.h"
 #include "kbwindowinfo.h"
 #include "modelisttablemodel.h"
 #include "xcb/xwindowdetector.h"
@@ -18,6 +20,9 @@ DeviceController::DeviceController(Kb* device, XWindowDetector* windowDetector, 
     connect(device, &Kb::profileRenamed, this, &DeviceController::profilesChanged);
     connect(device, &Kb::profileAdded, this, &DeviceController::profilesChanged);
     connect(device, &Kb::modeChanged, this, &DeviceController::updateCurrentMode);
+    connect(device, &Kb::infoUpdated, this, &DeviceController::infoUpdated);
+    if(hasBattery())
+        connect(device, &Kb::batteryChanged, this, &DeviceController::batteryChanged);
     connect(AppController::instance(), &AppController::switchToProfileCLI, this, &DeviceController::switchToProfile);
     connect(AppController::instance(), &AppController::switchToModeCLI, this, &DeviceController::switchToMode);
 }
@@ -138,6 +143,174 @@ void DeviceController::saveToHardware(){
     _device->hwSave();
     emit profilesChanged();
     _modes->profileChanged();
+}
+
+QString DeviceController::modelName() const {
+    return _device->usbModel;
+}
+
+QString DeviceController::serial() const {
+    return _device->usbSerial;
+}
+
+QString DeviceController::firmwareVersion() const {
+    return _device->firmware.app.toString();
+}
+
+QString DeviceController::bootloaderVersion() const {
+    return _device->firmware.bld.toString();
+}
+
+bool DeviceController::hasRadioFirmware() const {
+    return !_device->firmware.radioapp.isNull();
+}
+
+QString DeviceController::radioFirmwareVersion() const {
+    return _device->firmware.radioapp.toString();
+}
+
+bool DeviceController::hasRadioBootloader() const {
+    return !_device->firmware.radiobld.isNull();
+}
+
+QString DeviceController::radioBootloaderVersion() const {
+    return _device->firmware.radiobld.toString();
+}
+
+// Indexed by Kb::pollrate_t
+static const char* const pollRateNames[Kb::POLLRATE_COUNT] = {
+    "8 ms", "4 ms", "2 ms", "1 ms", "0.5 ms", "0.25 ms", "0.1 ms",
+};
+
+QStringList DeviceController::pollRates() const {
+    // Remove unsupported pollrates
+    int fastest = Kb::POLLRATE_COUNT - 1;
+    if(_device->maxpollrate != Kb::POLLRATE_UNKNOWN)
+        fastest = _device->maxpollrate;
+    QStringList rates;
+    for(int i = fastest; i >= 0; i--)
+        rates.append(QLatin1String(pollRateNames[i]));
+    return rates;
+}
+
+bool DeviceController::hasPollRate() const {
+    return _device->pollrate != Kb::POLLRATE_UNKNOWN;
+}
+
+bool DeviceController::canSetPollRate() const {
+    return _device->adjrate;
+}
+
+int DeviceController::pollRateIndex() const {
+    if(_device->pollrate == Kb::POLLRATE_UNKNOWN)
+        return 0;
+    return pollRates().count() - _device->pollrate - 1;
+}
+
+void DeviceController::setPollRate(int index){
+    const QString str = pollRates().at(index);
+    _device->setPollRate(str.left(str.indexOf(QLatin1String(" ms"))));
+}
+
+void DeviceController::setupLayout(){
+    // Read device layout
+    if(!_device->features.contains("bind")){
+        _device->layout(KeyMap::GB, false);
+        return;
+    }
+    // Load the current device's layout from the settings
+    QString layoutSettingsPath("Devices/%1");
+    CkbSettings settings(layoutSettingsPath.arg(_device->usbSerial));
+
+    _layouts = KeyMap::layoutNames(_device->hwlayout);
+
+    KeyMap::Layout layout = KeyMap::getLayout(settings.value("hwLayout").toString());
+    if(layout == KeyMap::NO_LAYOUT){
+        // If the layout hasn't been set yet, first check if one was set globally from a previous version
+        // If not, try to pick an appropriate one that's supported by the hardware
+        KeyMap::Layout oldLayout = KeyMap::getLayout(CkbSettings::get("Program/KbdLayout").toString());
+        if(oldLayout == KeyMap::NO_LAYOUT){
+            layout = KeyMap::locale(&_layouts);
+        } else {
+            CkbSettings::set("Program/KbdLayout", "");
+            layout = oldLayout;
+        }
+    }
+    // Find the position of the layout in the list
+    int layoutpos = -1;
+    if(layout != KeyMap::NO_LAYOUT){
+        for(int i = 0; i < _layouts.count(); i++){
+            if(_layouts.at(i).first == (int)layout){
+                layoutpos = i;
+                break;
+            }
+        }
+    }
+    // If no layout was found, pick the first one from the list
+    if(layoutpos == -1){
+        layout = (KeyMap::Layout)_layouts.at(0).first;
+        layoutpos = 0;
+    }
+    _layoutIndex = layoutpos;
+
+    // Set the layout and save it
+    _device->layout(layout, false);
+}
+
+void DeviceController::setLayout(int index){
+    KeyMap::Layout layout = (KeyMap::Layout)_layouts.at(index).first;
+    // Only set the layout if it was changed
+    if(layout == _device->getCurrentLayout())
+        return;
+    QString layoutSettingsPath("Devices/%1/hwLayout");
+    CkbSettings::set(layoutSettingsPath.arg(_device->usbSerial), KeyMap::getLayout(layout));
+    _device->layout(layout, true);
+}
+
+bool DeviceController::hasBattery() const {
+    return _device->features.contains("battery");
+}
+
+bool DeviceController::showBatteryIndicator() const {
+    return _device->showBatteryIndicator();
+}
+
+void DeviceController::setShowBatteryIndicator(bool show){
+    if(!hasBattery())
+        return;
+    _device->setShowBatteryIndicator(show);
+    _device->needsSave();
+}
+
+bool DeviceController::hasFirmwareUpdates() const {
+    return _device->features.contains("fwupdate");
+}
+
+bool DeviceController::firmwareListDownloaded() const {
+    return AppController::instance()->firmware()->hasDownloaded();
+}
+
+QString DeviceController::firmwareButtonText() const {
+    KbFirmware* firmware = AppController::instance()->firmware();
+    if(!firmware->hasDownloaded())
+        return QCoreApplication::translate("KbWidget", "Check for updates");
+    CkbVersionNumber newVersion = firmware->versionForBoard(_device->productID);
+    const CkbVersionNumber& oldVersion = _device->firmware.app;
+    if(newVersion.isNull() || newVersion <= oldVersion)
+        return QCoreApplication::translate("KbWidget", "Up to date");
+    return QCoreApplication::translate("KbWidget", "Upgrade to v%1").arg(newVersion.toString());
+}
+
+DeviceController::FirmwareCheck DeviceController::checkFirmware(CkbVersionNumber& newVersion){
+    newVersion = AppController::instance()->firmware()->versionForBoard(_device->productID, true);
+    const CkbVersionNumber& oldVersion = _device->firmware.app;
+    if(newVersion.isNull())
+        return FIRMWARE_CHECK_FAILED;
+    if(newVersion.CkbTooOld())
+        return FIRMWARE_NEEDS_NEWER_CKB;
+    if(newVersion <= oldVersion)
+        return FIRMWARE_UP_TO_DATE;
+    return FIRMWARE_UPGRADE_AVAILABLE;
 }
 
 void DeviceController::switchToProfile(const QString& profile){

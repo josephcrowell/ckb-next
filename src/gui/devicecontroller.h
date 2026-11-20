@@ -1,8 +1,12 @@
 #ifndef DEVICECONTROLLER_H
 #define DEVICECONTROLLER_H
 
+#include <QList>
 #include <QObject>
+#include <QPair>
 #include <QStringList>
+#include "batterystatus.h"
+#include "ckbversionnumber.h"
 #include "xcb/xwindowinfo.h"
 
 class Kb;
@@ -49,6 +53,53 @@ public:
 
     void saveToHardware();
 
+    // Device information
+    QString modelName() const;
+    QString serial() const;
+    QString firmwareVersion() const;
+    QString bootloaderVersion() const;
+    // Not every wireless device has a radio firmware or bootloader
+    bool hasRadioFirmware() const;
+    QString radioFirmwareVersion() const;
+    bool hasRadioBootloader() const;
+    QString radioBootloaderVersion() const;
+
+    // Poll rates the device supports, fastest first, as "<n> ms"
+    QStringList pollRates() const;
+    bool hasPollRate() const;
+    bool canSetPollRate() const;
+    // Index of the current poll rate in pollRates() (0 if unknown)
+    int pollRateIndex() const;
+    void setPollRate(int index);
+
+    // Choose the device's layout (stored, an old global one, or from the locale) and apply it.
+    // Call once, where KbWidget's constructor did.
+    void setupLayout();
+    // Layouts the device supports, as (KeyMap::Layout, name); empty without the "bind" feature
+    inline const QList<QPair<int, QString>>& layouts() const { return _layouts; }
+    // Index of the layout setupLayout() chose in layouts()
+    inline int layoutIndex() const { return _layoutIndex; }
+    // Apply and store the layout at index in layouts()
+    void setLayout(int index);
+
+    bool hasBattery() const;
+    bool showBatteryIndicator() const;
+    void setShowBatteryIndicator(bool show);
+
+    enum FirmwareCheck {
+        FIRMWARE_CHECK_FAILED,
+        FIRMWARE_NEEDS_NEWER_CKB,
+        FIRMWARE_UP_TO_DATE,
+        FIRMWARE_UPGRADE_AVAILABLE,
+    };
+    bool hasFirmwareUpdates() const;
+    // Whether the list of firmware versions has been downloaded yet
+    bool firmwareListDownloaded() const;
+    // "Check for updates", "Up to date" or "Upgrade to v<version>"
+    QString firmwareButtonText() const;
+    // Compare the device's firmware with the newest one, downloading the list first if needed
+    FirmwareCheck checkFirmware(CkbVersionNumber& newVersion);
+
 public slots:
     // Switch to the first mode whose window rules match, or back to the mode used before
     void switchToModeByFocus(XWindowInfo win);
@@ -61,6 +112,10 @@ signals:
     void profilesChanged();
     // switchToProfile() selected the profile at index
     void profileSwitched(int index);
+    // Device information, poll rate, layout or battery indicator setting changed
+    void infoUpdated();
+    // Only for devices with a battery
+    void batteryChanged(uint level, BatteryStatus status);
 
 private slots:
     void updateCurrentMode();
@@ -69,6 +124,8 @@ private:
     Kb* _device;
     ModeListTableModel* _modes;
     KbMode* _currentMode = nullptr;
+    QList<QPair<int, QString>> _layouts;
+    int _layoutIndex = -1;
     // Mode to return to when the focused window no longer matches any mode
     KbMode* prevmode = nullptr;
 };

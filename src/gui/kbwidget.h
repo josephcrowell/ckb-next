@@ -47,11 +47,6 @@ private:
 
     const static int GUID = Qt::UserRole;
     const static int NEW_FLAG = Qt::UserRole + 1;
-    inline int getPollRateBoxIdx(Kb::pollrate_t poll){
-        if(poll == Kb::POLLRATE_UNKNOWN)
-            return 0;
-        return ui->pollRateBox->count() - poll - 1;
-    }
 
     DeviceController* controller;
     void openEventMgr(KbMode* mode);
