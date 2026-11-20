@@ -1,13 +1,11 @@
 #include "mperfwidget.h"
 #include "ui_mperfwidget.h"
 #include "modeselectdialog.h"
-#include <cmath>
+#include "perfcontroller.h"
 #include "compat/qoverloadlegacy.h"
 
-const static QString xyLinkPath = "UI/DPI/UnlinkXY";
-
 MPerfWidget::MPerfWidget(QWidget *parent) :
-    QWidget(parent), ui(new Ui::MPerfWidget), perf(nullptr), profile(nullptr), _xyLink(!CkbSettings::get(xyLinkPath).toBool()), colorLink(false), isSetting(false), isDarkCore(false) {
+    QWidget(parent), ui(new Ui::MPerfWidget), controller(new PerfController(this)), colorLink(false), isSetting(false) {
 // Re-declare checkStateChanged() signal if Qt Version is below 6.7.0.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     void (QCheckBox::*checkStateChanged)(Qt::CheckState) = &QCheckBox::checkStateChanged;
@@ -16,7 +14,7 @@ MPerfWidget::MPerfWidget(QWidget *parent) :
 #endif
 
     ui->setupUi(this);
-    ui->xyBox->setChecked(!_xyLink);
+    ui->xyBox->setChecked(!controller->xyLinked());
     // Set up DPI stages
     stages[0].indicator = ui->iButton0; stages[0].xSlider = ui->xSlider0; stages[0].ySlider = ui->ySlider0; stages[0].xBox = ui->xBox0; stages[0].yBox = ui->yBox0; stages[0].enableCheck = nullptr;
     stages[1].indicator = ui->iButton1; stages[1].xSlider = ui->xSlider1; stages[1].ySlider = ui->ySlider1; stages[1].xBox = ui->xBox1; stages[1].yBox = ui->yBox1; stages[1].enableCheck = ui->eBox1;
@@ -78,6 +76,7 @@ MPerfWidget::MPerfWidget(QWidget *parent) :
         stages[i].indicatorLabel->setVisible(false);
     }
     ui->iLabelO->setVisible(false);
+    connect(controller, &PerfController::dpiChanged, this, &MPerfWidget::highlightDpiBox);
 }
 
 MPerfWidget::~MPerfWidget(){
@@ -85,30 +84,25 @@ MPerfWidget::~MPerfWidget(){
 }
 
 void MPerfWidget::setPerf(KbPerf *newPerf, KbProfile *newProfile){
-    perf = newPerf;
-    profile = newProfile;
-    ui->spinBox->setValue(std::round(perf->iOpacity() * 100.f));
+    controller->setPerf(newPerf, newProfile);
+    KbPerf* perf = newPerf;
+    ui->spinBox->setValue(controller->intensity());
     for(int i = 0; i < DPI_COUNT; i++){
         stages[i].indicator->color(perf->dpiColor(i));
-        bool oldLink = _xyLink;
+        bool oldLink = controller->xyLinked();
         // Don't force X/Y to the same value if they were set differently in the past
-        _xyLink = false;
+        controller->setXyLinked(false);
         stages[i].xBox->setValue(perf->dpi(i).x());
         stages[i].yBox->setValue(perf->dpi(i).y());
-        _xyLink = oldLink;
+        controller->setXyLinked(oldLink);
         if(stages[i].enableCheck)
             stages[i].enableCheck->setChecked(perf->dpiEnabled(i));
     }
     ui->iButtonO->color(perf->dpiColor(KbPerf::OTHER));
-    ui->aSnapBox->setChecked(perf->angleSnap());
-    //Subtract 2 from profile values if using a dark core, since it only supports 3 heights
-    if(isDarkCore)
-        ui->lHeightBox->setCurrentIndex(perf->liftHeight() - 3);
-    else
-        ui->lHeightBox->setCurrentIndex(perf->liftHeight() - 1);
-    ui->indicBox->setChecked(perf->dpiIndicator());
-    highlightDpiBox(perf->getDpiIdx());
-    connect(perf, &KbPerf::dpiChanged, this, &MPerfWidget::highlightDpiBox);
+    ui->aSnapBox->setChecked(controller->angleSnap());
+    ui->lHeightBox->setCurrentIndex(controller->liftHeightIndex());
+    ui->indicBox->setChecked(controller->dpiIndicator());
+    highlightDpiBox(controller->dpiIndex());
 }
 
 void MPerfWidget::colorClicked(int index){
@@ -120,42 +114,16 @@ void MPerfWidget::colorChanged(int index){
     QColor color = stages[index].indicator->color();
     if(colorLink){
         // Alt was held down - set all
-        for(int i = 0; i < DPI_COUNT; i++){
+        for(int i = 0; i < DPI_COUNT; i++)
             stages[i].indicator->color(color);
-            perf->dpiColor(i, color);
-        }
         ui->iButtonO->color(color);
-        perf->dpiColor(KbPerf::OTHER, color);
-    } else {
-        // Set one
-        perf->dpiColor(index, color);
     }
+    controller->setDpiColor(index, color, colorLink);
     colorLink = false;
 }
 
-static inline int dpiExp(int value, int min, int max){
-    const double DPI_BASE = (double)max / (double)KbPerf::DPI_MIN;
-    double val = (value - min) / (double)(max - min);
-    val = pow(DPI_BASE, val);
-    return round(KbPerf::DPI_MIN * val);
-}
-
-static inline int dpiLog(int value, int min, int max){
-    const double DPI_BASE = (double)max / (double)KbPerf::DPI_MIN;
-    double val = value / (double)KbPerf::DPI_MIN;
-    val = log(val) / log(DPI_BASE);
-    return round(val * (max - min) + min);
-}
-
-static inline int dpiRound(int value){
-    if(value > 1000)
-        return round(value / 100.) * 100;
-    else
-        return round(value / 50.) * 50;
-}
-
 static inline int calculateSliderDpi(QSlider* slider){
-    return dpiRound(dpiExp(slider->sliderPosition(), slider->minimum(), slider->maximum()));
+    return PerfController::sliderToDpi(slider->sliderPosition(), slider->minimum(), slider->maximum());
 }
 
 
@@ -169,12 +137,9 @@ void MPerfWidget::sliderXValueChanged(int index){
     SET_START;
     QSlider* slider = stages[index].xSlider;
     int value = calculateSliderDpi(slider);
-    if(_xyLink)
-        perf->dpi(index, value);
-    else
-        perf->dpi(index, QPoint(value, perf->dpi(index).y()));
+    controller->setDpiX(index, value);
     stages[index].xBox->setValue(value);
-    if(_xyLink){
+    if(controller->xyLinked()){
         stages[index].ySlider->setValue(slider->sliderPosition());
         stages[index].yBox->setValue(value);
     }
@@ -186,7 +151,7 @@ void MPerfWidget::sliderXMoved(int index){
     QSlider* slider = stages[index].xSlider;
     int value = calculateSliderDpi(slider);
     stages[index].xBox->setValue(value);
-    if(_xyLink){
+    if(controller->xyLinked()){
         stages[index].ySlider->setValue(slider->sliderPosition());
         stages[index].yBox->setValue(value);
     }
@@ -197,12 +162,9 @@ void MPerfWidget::sliderYValueChanged(int index){
     SET_START;
     QSlider* slider = stages[index].ySlider;
     int value = calculateSliderDpi(slider);
-    if(_xyLink)
-        perf->dpi(index, value);
-    else
-        perf->dpi(index, QPoint(perf->dpi(index).x(), value));
+    controller->setDpiY(index, value);
     stages[index].yBox->setValue(value);
-    if(_xyLink){
+    if(controller->xyLinked()){
         stages[index].xSlider->setValue(slider->sliderPosition());
         stages[index].xBox->setValue(value);
     }
@@ -214,7 +176,7 @@ void MPerfWidget::sliderYMoved(int index){
     QSlider* slider = stages[index].ySlider;
     int value = calculateSliderDpi(slider);
     stages[index].yBox->setValue(value);
-    if(_xyLink){
+    if(controller->xyLinked()){
         stages[index].xSlider->setValue(slider->sliderPosition());
         stages[index].xBox->setValue(value);
     }
@@ -263,7 +225,7 @@ void MPerfWidget::setLegacyM95(){
 }
 
 void MPerfWidget::setDarkCore(){
-    isDarkCore = true;
+    controller->setDarkCore();
 
     // Remove lift height elements, which do not work
     ui->lHeightBox->removeItem(1);
@@ -300,13 +262,10 @@ void MPerfWidget::boxXChanged(int index){
     QSpinBox* box = stages[index].xBox;
     QSlider* slider = stages[index].xSlider;
     int value = box->value();
-    slider->setValue(dpiLog(value, slider->minimum(), slider->maximum()));
-    if(_xyLink)
-        perf->dpi(index, value);
-    else
-        perf->dpi(index, QPoint(value, perf->dpi(index).y()));
+    slider->setValue(PerfController::dpiToSlider(value, slider->minimum(), slider->maximum()));
+    controller->setDpiX(index, value);
     SET_END;
-    if(_xyLink)
+    if(controller->xyLinked())
         stages[index].yBox->setValue(value);
 }
 
@@ -315,58 +274,45 @@ void MPerfWidget::boxYChanged(int index){
     QSpinBox* box = stages[index].yBox;
     QSlider* slider = stages[index].ySlider;
     int value = box->value();
-    slider->setValue(dpiLog(value, slider->minimum(), slider->maximum()));
-    if(_xyLink)
-        perf->dpi(index, value);
-    else
-        perf->dpi(index, QPoint(perf->dpi(index).x(), value));
+    slider->setValue(PerfController::dpiToSlider(value, slider->minimum(), slider->maximum()));
+    controller->setDpiY(index, value);
     SET_END;
-    if(_xyLink)
+    if(controller->xyLinked())
         stages[index].xBox->setValue(value);
 }
 
 void MPerfWidget::enableChanged(int index){
-    perf->dpiEnabled(index, stages[index].enableCheck->isChecked());
+    controller->setDpiEnabled(index, stages[index].enableCheck->isChecked());
 }
 
 void MPerfWidget::on_xyBox_clicked(bool checked){
-    _xyLink = !checked;
-    CkbSettings::set(xyLinkPath, checked);
+    controller->setXyLinked(!checked);
+    controller->saveXyLinked();
     // FIXME: update other MPerfWidgets, since this is a global setting
 }
 
 void MPerfWidget::on_indicBox_clicked(bool checked){
-    perf->dpiIndicator(checked);
+    controller->setDpiIndicator(checked);
 }
 
 void MPerfWidget::on_aSnapBox_clicked(bool checked){
-    perf->angleSnap(checked);
+    controller->setAngleSnap(checked);
 }
 
 void MPerfWidget::on_lHeightBox_activated(int index){
-    int height = index + 1;
-
-    // Add 2 to the selected index, since the dark cores lift height ranges from 3 to 5, not 1 to 5
-    if (isDarkCore)
-        height += 2;
-
-    perf->liftHeight((KbPerf::height)height);
+    controller->setLiftHeightIndex(index);
 }
 
 void MPerfWidget::on_copyButton_clicked(){
+    KbProfile* profile = controller->profile();
     ModeSelectDialog dialog(this, profile->currentMode(), profile->modes(), tr("Copy performance settings to:"));
     if(dialog.exec() != QDialog::Accepted)
         return;
-    QList<KbMode*> selectedModes = dialog.selection();
-    foreach(KbMode* mode, selectedModes){
-        *mode->perf() = *perf;
-    }
+    controller->copyToModes(dialog.selection());
 }
 
 void MPerfWidget::on_spinBox_valueChanged(int arg1){
-    if(!perf)
-        return;
-    perf->iOpacity(arg1 / 100.f);
+    controller->setIntensity(arg1);
 }
 
 void MPerfWidget::highlightDpiBox(int index){

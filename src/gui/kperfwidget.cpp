@@ -1,7 +1,7 @@
 #include "kperfwidget.h"
 #include "ui_kperfwidget.h"
 #include "modeselectdialog.h"
-#include <cmath>
+#include "perfcontroller.h"
 #include "compat/qoverloadlegacy.h"
 
 ///
@@ -10,7 +10,7 @@
 ///
 KPerfWidget::KPerfWidget(QWidget *parent) :
     QWidget(parent),
-    ui(new Ui::KPerfWidget)
+    ui(new Ui::KPerfWidget), controller(new PerfController(this))
 {
     ui->setupUi(this);
     // Set up indicators
@@ -58,11 +58,9 @@ KPerfWidget::KPerfWidget(QWidget *parent) :
         }
     }
 
-    if (isMuteDeviceSupported()){
+    if (PerfController::muteDeviceSupported()){
         ui->muteDev->setEnabled(true);
-        connect(ui->muteDev, OVERLOAD_PTR(int, QComboBox, currentIndexChanged), [=] (int index) {
-            perf->setMuteDevice(static_cast<muteDevice>(index));
-        });
+        connect(ui->muteDev, OVERLOAD_PTR(int, QComboBox, currentIndexChanged), controller, &PerfController::setMuteDevice);
     }
 
     k95Widgets << ui->modeBox << ui->modeColorOn << ui->modeColorOff << ui->macroBox << ui->macroColorOn << ui->macroColorOff << ui->k95Label1 << ui->k95Label2 << ui->k95Label3 << ui->k95Label4 << ui->k95Label5 << ui->k95Label6 << ui->k95Line << ui->k95Spacer;
@@ -75,82 +73,18 @@ KPerfWidget::~KPerfWidget(){
     delete ui;
 }
 
-///
-/// \brief KPerfWidget::raw2Mode return hardware mode depending on setiings in \a sw_enable and \a hw_enable
-/// \param sw_enable
-/// \param hw_enable
-/// \return the mode of operation for key-coloring and separate indicators.
-/// \see KPerfWidget::mode2Raw for details.
-///
-KPerfWidget::HwMode KPerfWidget::raw2Mode(bool sw_enable, i_hw hw_enable){
-    if(sw_enable){
-        if(hw_enable == KbPerf::NORMAL)
-            return BOTH;
-        return RGB;
-    } else {
-        if(hw_enable == KbPerf::ON)
-            return ALWAYS_ON;
-        else if(hw_enable == KbPerf::OFF)
-            return ALWAYS_OFF;
-        return NORMAL;
-    }
-}
-
-///
-/// \brief KPerfWidget::mode2Raw Set values of sw_enable and hw_enable to hte value corresponding to input var mode
-/// \param [IN] mode
-/// \param [OUT] sw_enable
-/// \param [OUT] hw_enable
-/// mode determines how colors at a key and separate indicators should be handled:
-/// Mode | sw | hw
-/// _ | _ | _
-/// NORMAL | No color change at the key | use the separate indicator depending on key state
-/// ALWAYS_ON | No color change at the key | switch on separate indicator
-/// ALWAYS_OFF | No color change at the key | switch off separate indicator
-/// RGB | use color change at the key depending on color sliders | switch off separate indicator
-/// BOTH | use color change at the key depending on color sliders | use the separate indicator depending on key state
-///
-void KPerfWidget::mode2Raw(HwMode mode, bool& sw_enable, i_hw& hw_enable){
-    switch(mode){
-    case NORMAL:
-        sw_enable = false;
-        hw_enable = KbPerf::NORMAL;
-        break;
-    case ALWAYS_ON:
-        sw_enable = false;
-        hw_enable = KbPerf::ON;
-        break;
-    case ALWAYS_OFF:
-        sw_enable = false;
-        hw_enable = KbPerf::OFF;
-        break;
-    case RGB:
-        sw_enable = true;
-        hw_enable = KbPerf::OFF;
-        break;
-    case BOTH:
-        sw_enable = true;
-        hw_enable = KbPerf::NORMAL;
-        break;
-    }
-}
-
 void KPerfWidget::setPerf(KbPerf* newPerf, KbProfile* newProfile){
-    perf = newPerf;
-    profile = newProfile;
+    controller->setPerf(newPerf, newProfile);
     // Set intensity
-    ui->intensityBox->setValue(std::round(perf->iOpacity() * 100.f));
+    ui->intensityBox->setValue(controller->intensity());
     // Set hardware indicator values
     for(int i = 0; i < HW_I_COUNT; i++){
-        QColor c1, c2, c3;
-        bool software;
-        i_hw hardware;
-        perf->getIndicator((indicator)i, c1, c2, c3, software, hardware);
-        HwMode mode = raw2Mode(software, hardware);
-        indicators[i].hwEnable->setCurrentIndex((int)mode);
-        indicators[i].color1->color(c1);
-        indicators[i].color2->color(c2);
-        if(mode == RGB || mode == BOTH){
+        const PerfController::Indicator ind = controller->indicator(i);
+        indicators[i].hwEnable->setCurrentIndex((int)ind.mode);
+        indicators[i].color1->color(ind.color1);
+        indicators[i].color2->color(ind.color2);
+        // RGB or BOTH
+        if(ind.software){
             indicators[i].color1->setEnabled(true);
             indicators[i].color2->setEnabled(true);
         } else {
@@ -160,14 +94,12 @@ void KPerfWidget::setPerf(KbPerf* newPerf, KbProfile* newProfile){
     }
     // Set software indicators
     for(int i = HW_I_COUNT; i < I_COUNT; i++){
-        QColor c1, c2, c3;
-        bool software;
-        i_hw hardware;
-        perf->getIndicator((indicator)i, c1, c2, c3, software, hardware);
+        const PerfController::Indicator ind = controller->indicator(i);
+        const bool software = ind.software;
         indicators[i].enable->setChecked(software);
-        indicators[i].color1->color(c1);
-        indicators[i].color2->color(c2);
-        if(indicators[i].color3) indicators[i].color3->color(c3);
+        indicators[i].color1->color(ind.color1);
+        indicators[i].color2->color(ind.color2);
+        if(indicators[i].color3) indicators[i].color3->color(ind.color3);
         if(software){
             indicators[i].color1->setEnabled(true);
             indicators[i].color2->setEnabled(true);
@@ -179,15 +111,15 @@ void KPerfWidget::setPerf(KbPerf* newPerf, KbProfile* newProfile){
         }
     }
     // Set mute device
-    ui->muteDev->setCurrentIndex(perf->getMuteDevice());
+    ui->muteDev->setCurrentIndex(controller->muteDevice());
     // Hide K95 indicators on non-K95s
-    if(profile->keyMap().model() == KeyMap::K95){
+    if(controller->hasK95Indicators()){
         foreach(QWidget* w, k95Widgets)
             w->show();
     } else {
         foreach(QWidget* w, k95Widgets)
             w->hide();
-        if(profile->keyMap().model() == KeyMap::STRAFE) { // hide indicators unsupported by STRAFE
+        if(!controller->hasMuteIndicator()) { // hide indicators unsupported by STRAFE
             ui->muteBox->hide();
             ui->muteColorOn->hide();
             ui->muteColorOff->hide();
@@ -200,16 +132,14 @@ void KPerfWidget::setPerf(KbPerf* newPerf, KbProfile* newProfile){
 }
 
 void KPerfWidget::uiUpdated(int index){
-    if(!perf)
+    if(!controller->perf())
         return;
-    // Read HW/SW enable state
-    bool software = false;
-    i_hw hardware = KbPerf::NONE;
-    if(indicators[index].enable){
-        software = indicators[index].enable->isChecked();
-    } else {
-        mode2Raw((HwMode)indicators[index].hwEnable->currentIndex(), software, hardware);
-    }
+    const QColor c1 = indicators[index].color1->color();
+    const QColor c2 = indicators[index].color2->color();
+    const QColor c3 = indicators[index].color3 ? indicators[index].color3->color() : QColor();
+    const bool enabled = indicators[index].enable ? indicators[index].enable->isChecked() : false;
+    const int hwMode = indicators[index].hwEnable ? indicators[index].hwEnable->currentIndex() : 0;
+    const bool software = controller->setIndicator(index, enabled, hwMode, c1, c2, c3);
     // Enable/disable color buttons based on whether or not the indicator is turned on
     if(software){
         indicators[index].color1->setEnabled(true);
@@ -220,24 +150,16 @@ void KPerfWidget::uiUpdated(int index){
         indicators[index].color2->setEnabled(false);
         if(indicators[index].color3) indicators[index].color3->setEnabled(false);
     }
-    QColor c1 = indicators[index].color1->color();
-    QColor c2 = indicators[index].color2->color();
-    QColor c3 = indicators[index].color3 ? indicators[index].color3->color() : QColor();
-    perf->setIndicator((indicator)index, c1, c2, c3, software, hardware);
 }
 
 void KPerfWidget::on_intensityBox_valueChanged(int arg1){
-    if(!perf)
-        return;
-    perf->iOpacity(arg1 / 100.f);
+    controller->setIntensity(arg1);
 }
 
 void KPerfWidget::on_copyButton_clicked(){
+    KbProfile* profile = controller->profile();
     ModeSelectDialog dialog(this, profile->currentMode(), profile->modes(), tr("Copy performance settings to:"));
     if(dialog.exec() != QDialog::Accepted)
         return;
-    QList<KbMode*> selectedModes = dialog.selection();
-    foreach(KbMode* mode, selectedModes){
-        *mode->perf() = *perf;
-    }
+    controller->copyToModes(dialog.selection());
 }

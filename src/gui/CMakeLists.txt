@@ -187,6 +187,7 @@ if (MACOS OR LINUX)
               mperfwidget.cpp
               nouserinputtextedit.cpp
               nowheelcombobox.cpp
+              perfcontroller.cpp
               rebindcontroller.cpp
               rebindwidget.cpp
               rlistwidget.cpp
@@ -256,6 +257,7 @@ if (MACOS OR LINUX)
               mperfwidget.h
               nouserinputtextedit.h
               nowheelcombobox.h
+              perfcontroller.h
               compat/qoverloadlegacy.h
               compat/qrand.h
               rebindcontroller.h

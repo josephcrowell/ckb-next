@@ -11,6 +11,8 @@
 #include "kbprofile.h"
 #include "colorbutton.h"
 
+class PerfController;
+
 namespace Ui {
 class MPerfWidget;
 }
@@ -32,8 +34,7 @@ public:
 private:
     Ui::MPerfWidget *ui;
 
-    KbPerf* perf;
-    KbProfile* profile;
+    PerfController* controller;
 
     struct DpiUi {
         ColorButton* indicator;
@@ -43,13 +44,10 @@ private:
         QLabel* indicatorLabel;
     };
     DpiUi stages[DPI_COUNT];
-    bool _xyLink;
     bool colorLink;
 
     // Hack: prevent recursive slot calls
     bool isSetting;
-
-    bool isDarkCore;
 
     void hideItemsInLayout(QLayout* layout);
 

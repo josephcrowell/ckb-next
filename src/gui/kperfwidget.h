@@ -8,6 +8,8 @@
 #include "kbprofile.h"
 #include "colorbutton.h"
 
+class PerfController;
+
 namespace Ui {
 class KPerfWidget;
 }
@@ -30,25 +32,7 @@ public:
 private:
     Ui::KPerfWidget *ui;
 
-    KbPerf* perf;
-    KbProfile* profile;
-
-    // Hardware indicator dropdowns
-    enum HwMode {
-        NORMAL,
-        ALWAYS_ON,
-        ALWAYS_OFF,
-        RGB,
-        BOTH
-    };
-    HwMode raw2Mode(bool sw_enable, i_hw hw_enable);
-
-    ///
-    /// \brief KPerfWidget::mode2Raw Set values of sw_enable and hw_enable to hte value corresponding to input var mode
-    /// \param [IN] mode
-    /// \param [OUT] sw_enable
-    /// \param [OUT] hw_enable
-    void mode2Raw(HwMode mode, bool& sw_enable, i_hw& hw_enable);
+    PerfController* controller;
 
     struct IndicatorUi {
         QCheckBox* enable;
