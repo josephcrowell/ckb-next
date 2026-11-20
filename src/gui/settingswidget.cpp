@@ -1,131 +1,57 @@
-#include <QTimer>
-#include "animscript.h"
-#include "ckbsettings.h"
-#include "kb.h"
 #include "settingswidget.h"
 #include "ui_settingswidget.h"
+#include "settingscontroller.h"
 #include <QMessageBox>
 #include <QFileDialog>
-#include <QDateTime>
-#include "mainwindow.h"
-#include <ckbnextconfig.h>
-#include <QProgressBar>
+#include <QApplication>
 
-extern QString devpath;
-
-// Modifier keys (OS-dependent)
-static QStringList modKeys, modNames;
 static bool updateRequestedByUser = false;
 
 SettingsWidget::SettingsWidget(QWidget *parent) :
-    QWidget(parent), devDetect(nullptr), devDetectProgress(nullptr),
+    QWidget(parent), devDetectProgress(nullptr),
     ui(new Ui::SettingsWidget)
 {
+    // Loads and applies the settings, so before the controls show them
+    controller = new SettingsController(this);
+    connect(controller, &SettingsController::reportFinished, this, &SettingsWidget::reportFinished);
+
     ui->setupUi(this);
 
     // Prepare extra settings
     extra = ui->extraWidget;
+    extra->init(controller);
 
 #ifndef Q_OS_MACOS
     ui->uninstallButton->hide();
 #endif
 
-    CkbSettings settings("Program");
-
     // Load modifier remap
-    KbBind::loadGlobalRemap();
-    if(modKeys.isEmpty()){
-        modKeys << "caps" << "lshift" << "lctrl" << "lalt" << "lwin";
-#ifdef Q_OS_MACOS
-        modNames << "Caps Lock" << "Shift" << "Control (⌃)" << "Option (⌥)" << "Command (⌘)";
-#else
-        modNames << "Caps Lock" << "Shift" << "Control" << "Alt" << "Super";
-#endif
-    }
-    foreach(const QString& name, modNames){
+    foreach(const QString& name, SettingsController::modifierNames()){
         ui->capsBox->addItem(name);
         ui->shiftBox->addItem(name);
         ui->ctrlBox->addItem(name);
         ui->altBox->addItem(name);
         ui->winBox->addItem(name);
     }
-
-    int idx = modKeys.indexOf(KbBind::globalRemap("caps"));
-    if(idx >= 0)
-        ui->capsBox->setCurrentIndex(idx);
-    idx = modKeys.indexOf(KbBind::globalRemap("lshift"));
-    if(idx >= 0)
-        ui->shiftBox->setCurrentIndex(idx);
-    idx = modKeys.indexOf(KbBind::globalRemap("lctrl"));
-    if(idx >= 0)
-        ui->ctrlBox->setCurrentIndex(idx);
-    idx = modKeys.indexOf(KbBind::globalRemap("lwin"));
-    if(idx >= 0)
-        ui->winBox->setCurrentIndex(idx);
-    idx = modKeys.indexOf(KbBind::globalRemap("lalt"));
-    if(idx >= 0)
-        ui->altBox->setCurrentIndex(idx);
 #ifdef Q_OS_MACOS
-    if(settings.value("osxCmdSwap").toBool()){
-        // ckb <0.0.41
-        settings.remove("osxCmdSwap");
-        ui->ctrlBox->setCurrentIndex(modKeys.indexOf("lwin"));
-        ui->winBox->setCurrentIndex(modKeys.indexOf("lctrl"));
-        updateModifiers();
-    }
+    controller->migrateCmdSwap();
 #endif
+    loadModifiers();
 
     // Read auto update settings
-    ui->autoFWBox->setChecked(!settings.value("DisableAutoFWCheck").toBool());
+    ui->autoFWBox->setChecked(controller->autoFirmwareCheck());
 
-#ifdef Q_OS_LINUX
-    static const QString deletedAutorunPath = QStringLiteral("Program/DeletedOldAutostart");
-    // If autostart was enabled, and there's an autostart file in XDG_CONFIG_DIRS, then delete the local one.
-    if(!CkbSettings::get(deletedAutorunPath).toBool()) {
-        CkbSettings::set(deletedAutorunPath, QVariant::fromValue<bool>(true));
-
-        // Have to do this manually since Qt won't separate system paths from user ones
-        QStringList config_dirs = QString::fromLocal8Bit(qgetenv("XDG_CONFIG_DIRS")).split(QChar(':'), Qt::SkipEmptyParts);
-        if(config_dirs.isEmpty())
-            config_dirs.append(QStringLiteral("/etc/xdg"));
-
-        for(const QString& str : config_dirs) {
-            QDir d(str);
-            if(!d.exists() || !d.cd(QStringLiteral("autostart")))
-                continue;
-
-            if(d.exists(QStringLiteral("ckb-next.desktop"))) {
-                qDebug() << "Found autostart file in" << d.absolutePath();
-                // Path copy pasted from the old autorun.cpp
-                static const QDir path(QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.config/autostart");
-                // ckb-next wouldn't let you modify the autostart file before, so if the file exists, it's a pretty good guarantee that it's the one we created
-                // If the user modified it and made it read only, then this won't be able to remove it anyway
-                QFile::remove(path.absoluteFilePath(QStringLiteral("ckb-next.autostart.desktop")));
-                break;
-            }
-        }
-    }
-
-#endif
-    QString copyrightText = QString("© 2014-2016 <a href=\"https://github.com/ccMSC/\" style=\"text-decoration:none;\">ccMSC</a>.<br/>© 2017-%1 <a href=\"https://github.com/ckb-next/ckb-next/graphs/contributors\" style=\"text-decoration:none;\">%2</a>.").arg(CKB_NEXT_COPYRIGHT_YEAR, tr("The ckb-next development team"));
-
-#ifndef OS_MAC_LEGACY
-#ifdef Q_OS_MACOS
-    copyrightText.append(tr("<br/>Special thanks to <a href=\"https://github.com/tekezo\" style=\"text-decoration:none;\">tekezo</a> for <a href=\"https://github.com/tekezo/Karabiner-VirtualHIDDevice\" style=\"text-decoration:none;\">VirtualHIDDevice</a>."));
-#endif
-#endif
-
-    ui->label_2->setText(copyrightText);
+    ui->label_2->setText(SettingsController::copyrightText());
 
 #ifdef DISABLE_UPDATER
     ui->autoUpdBox->hide();
     ui->pushButton_2->hide();
 #else
-    ui->autoUpdBox->setChecked(!settings.value("DisableAutoUpdCheck", false).toBool());
+    ui->autoUpdBox->setChecked(controller->autoUpdateCheck());
 #endif
 
 #if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    ui->hiDPIBox->setChecked(settings.value("HiDPI", false).toBool());
+    ui->hiDPIBox->setChecked(controller->hiDpi());
 #else
     ui->hiDPIBox->hide();
 #endif
@@ -136,7 +62,7 @@ SettingsWidget::~SettingsWidget(){
 }
 
 void SettingsWidget::pollUpdates(){
-    extra->pollUpdates();
+    controller->pollUpdates();
 }
 
 void SettingsWidget::setStatus(const QString& text){
@@ -147,25 +73,27 @@ void SettingsWidget::setVersion(const CkbVersionNumber& version){
     ui->versionLabel->setText(QString("ckb-next ") + version.toString());
 }
 
-static inline QString right(const QString& left){
-    if(left[0] != 'l')
-        return left;
-    return "r" + left.mid(1);
+void SettingsWidget::loadModifiers(){
+    int idx = controller->modifierIndex("caps");
+    if(idx >= 0)
+        ui->capsBox->setCurrentIndex(idx);
+    idx = controller->modifierIndex("lshift");
+    if(idx >= 0)
+        ui->shiftBox->setCurrentIndex(idx);
+    idx = controller->modifierIndex("lctrl");
+    if(idx >= 0)
+        ui->ctrlBox->setCurrentIndex(idx);
+    idx = controller->modifierIndex("lwin");
+    if(idx >= 0)
+        ui->winBox->setCurrentIndex(idx);
+    idx = controller->modifierIndex("lalt");
+    if(idx >= 0)
+        ui->altBox->setCurrentIndex(idx);
 }
 
 void SettingsWidget::updateModifiers(){
-    QHash<QString, QString> newMods;
-    newMods["caps"] = modKeys[ui->capsBox->currentIndex()];
-    newMods["lshift"] = modKeys[ui->shiftBox->currentIndex()];
-    newMods["rshift"] = right(modKeys[ui->shiftBox->currentIndex()]);
-    newMods["lctrl"] = modKeys[ui->ctrlBox->currentIndex()];
-    newMods["rctrl"] = right(modKeys[ui->ctrlBox->currentIndex()]);
-    newMods["lalt"] = modKeys[ui->altBox->currentIndex()];
-    newMods["ralt"] = right(modKeys[ui->altBox->currentIndex()]);
-    newMods["lwin"] = modKeys[ui->winBox->currentIndex()];
-    newMods["rwin"] = right(modKeys[ui->winBox->currentIndex()]);
-    KbBind::setGlobalRemap(newMods);
-    KbBind::saveGlobalRemap();
+    controller->setModifiers(ui->capsBox->currentIndex(), ui->shiftBox->currentIndex(), ui->ctrlBox->currentIndex(),
+                             ui->altBox->currentIndex(), ui->winBox->currentIndex());
 }
 
 void SettingsWidget::on_pushButton_clicked(){
@@ -193,7 +121,7 @@ void SettingsWidget::on_winBox_activated(int index){
 }
 
 void SettingsWidget::on_autoFWBox_clicked(bool checked){
-    CkbSettings::set("Program/DisableAutoFWCheck", !checked);
+    controller->setAutoFirmwareCheck(checked);
 }
 
 void SettingsWidget::on_aboutQt_clicked(){
@@ -202,26 +130,15 @@ void SettingsWidget::on_aboutQt_clicked(){
 
 void SettingsWidget::on_generateReportButton_clicked(){
     // Don't allow the script to run twice
-    if(devDetect || devDetectProgress)
+    if(controller->reportRunning() || devDetectProgress)
         return;
 
     QMessageBox::information(this, tr("Generate report"), tr("This will collect software logs, as well as information about the Corsair devices in your system.\n\n"
                                                              "Make sure they are plugged in and click OK."));
-    devDetect = new QProcess();
-    connect(devDetect, SIGNAL(finished(int)), this, SLOT(devDetectFinished(int)));
-    connect(devDetect, &QProcess::destroyed, this, &SettingsWidget::devDetectDestroyed);
-#if defined(Q_OS_LINUX)
-    QString devDetectPath("ckb-next-dev-detect");
-#elif defined(Q_OS_MACOS)
-    QString devDetectPath("/Applications/ckb-next.app/Contents/Resources/ckb-next-dev-detect");
-#endif
-    devDetect->start(devDetectPath, QStringList() << "--nouserinput");
-
     // Check if it was started successfully
-    if(!devDetect->waitForStarted()){
+    if(!controller->startReport()){
         QMessageBox::critical(this, tr("Error executing ckb-next-dev-detect"), tr("An error occurred while trying to execute ckb-next-dev-detect.\n"
                                                                                   "File not found or not executable."));
-        devDetect->deleteLater();
         return;
     }
     devDetectProgress = new QProgressDialog(tr("Generating Report"), "", 0, 0, this);
@@ -229,47 +146,34 @@ void SettingsWidget::on_generateReportButton_clicked(){
     devDetectProgress->open();
 }
 
-void SettingsWidget::devDetectFinished(int retVal){
+void SettingsWidget::reportFinished(bool ok, const QString& errorOutput, int exitCode){
     devDetectProgress->close();
     delete devDetectProgress;
     devDetectProgress = nullptr;
-    QFile report("/tmp/ckb-next-dev-detect-report.gz");
-    if(retVal || !report.exists()){
+    if(!ok){
         QString errMsg(tr("An error occurred while trying to execute ckb-next-dev-detect.\n\n"));
-        errMsg.append(devDetect->readAllStandardError());
+        errMsg.append(errorOutput);
         errMsg.append("\n");
-        errMsg.append(QString(tr("Return code %1")).arg(retVal));
+        errMsg.append(QString(tr("Return code %1")).arg(exitCode));
         QMessageBox::critical(this, tr("Error executing ckb-next-dev-detect"), errMsg);
-        devDetect->deleteLater();
+        controller->finishReport(false);
         return;
     }
 
     QString newdir = QFileDialog::getExistingDirectory(this, tr("Select output directory"));
-    QString newfile(newdir + "/ckb-next-report-" + QString::number(QDateTime::currentMSecsSinceEpoch()/1000) + ".gz");
-    if(report.copy(newfile)){
+    if(controller->saveReport(newdir)){
         QMessageBox::information(this, tr("Report generated successfully"), tr("The report has been generated successfully."));
-        // Try to show the newly generated file
-#if defined(Q_OS_LINUX)
-        if(QProcess::execute("sh", QStringList() << "-c" << "gtk-launch `xdg-mime query default inode/directory` '" + newfile + "'"))
-            QProcess::execute("xdg-open", QStringList() << newdir);
-#elif defined(Q_OS_MACOS)
-        QProcess::execute("open", QStringList() << "-R" << newfile);
-#endif
+        controller->showReport();
     }
     else
         QMessageBox::critical(this, tr("Error writing report"), tr("Could not write report to the selected directory.\n"
                                                                    "Please pick a different one and try again."));
-    report.remove();
-    devDetect->deleteLater();
-}
-
-void SettingsWidget::devDetectDestroyed(){
-    devDetect = nullptr;
+    controller->finishReport(true);
 }
 
 void SettingsWidget::on_autoUpdBox_clicked(bool checked)
 {
-    CkbSettings::set("Program/DisableAutoUpdCheck", !checked);
+    controller->setAutoUpdateCheck(checked);
 }
 
 void SettingsWidget::on_pushButton_2_clicked()
@@ -298,13 +202,12 @@ void SettingsWidget::on_uninstallButton_clicked()
                                                              "Your settings and lighting profiles will be preserved."), QMessageBox::Cancel, QMessageBox::Ok) != QMessageBox::Ok)
         return;
 
-    // Open a terminal and run the uninstall script
-    QProcess::execute("open", QStringList() << "-a" << "Terminal" << "/Applications/ckb-next.app/Contents/Resources/uninstall.sh");
+    controller->uninstall();
 #endif
 }
 
 void SettingsWidget::on_hiDPIBox_clicked(bool checked)
 {
-    CkbSettings::set("Program/HiDPI", checked);
+    controller->setHiDpi(checked);
     QMessageBox::warning(this, tr("Please restart ckb-next"), tr("Please click the Quit button and restart ckb-next for the changes to take effect."), QMessageBox::Ok);
 }

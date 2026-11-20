@@ -3,6 +3,8 @@
 
 #include <QWidget>
 
+class SettingsController;
+
 namespace Ui {
 class ExtraSettingsWidget;
 }
@@ -15,7 +17,8 @@ public:
     explicit ExtraSettingsWidget(QWidget *parent = nullptr);
     ~ExtraSettingsWidget();
 
-    void pollUpdates();
+    // Shows the settings; called once by SettingsWidget
+    void init(SettingsController* settingsController);
 
 private slots:
     void on_trayBox_clicked(bool checked);
@@ -36,6 +39,7 @@ private slots:
 
 private:
     Ui::ExtraSettingsWidget *ui;
+    SettingsController* controller = nullptr;
 };
 
 #endif // EXTRASETTINGSWIDGET_H

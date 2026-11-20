@@ -192,6 +192,7 @@ if (MACOS OR LINUX)
               rebindcontroller.cpp
               rebindwidget.cpp
               rlistwidget.cpp
+              settingscontroller.cpp
               settingswidget.cpp
               animadddialog.h
               animationlistmodel.h
@@ -265,6 +266,7 @@ if (MACOS OR LINUX)
               rebindcontroller.h
               rebindwidget.h
               rlistwidget.h
+              settingscontroller.h
               settingswidget.h
               kbwindowinfo.h
               kbwindowinfomodel.h

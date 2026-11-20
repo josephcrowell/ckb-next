@@ -3,9 +3,10 @@
 
 #include <QWidget>
 #include "extrasettingswidget.h"
-#include <QProcess>
 #include <QProgressDialog>
 #include "ckbversionnumber.h"
+
+class SettingsController;
 
 namespace Ui {
 class SettingsWidget;
@@ -42,19 +43,19 @@ private slots:
     void on_autoFWBox_clicked(bool checked);
     void on_aboutQt_clicked();
     void on_generateReportButton_clicked();
-    void devDetectFinished(int retVal);
-    void devDetectDestroyed();
+    void reportFinished(bool ok, const QString& errorOutput, int exitCode);
     void on_autoUpdBox_clicked(bool checked);
     void on_pushButton_2_clicked();
     void on_uninstallButton_clicked();
     void on_hiDPIBox_clicked(bool checked);
 
 private:
-    QProcess* devDetect;
+    SettingsController* controller;
     QProgressDialog* devDetectProgress;
     Ui::SettingsWidget *ui;
     friend class MainWindow;
     ExtraSettingsWidget* extra;
+    void loadModifiers();
     void updateModifiers();
 };
 

@@ -101,6 +101,13 @@ void AppController::setTabsEnabled(bool enabled){
     emit tabsEnabledChanged(enabled);
 }
 
+void AppController::setTrayVisible(bool visible){
+    if(_trayVisible == visible)
+        return;
+    _trayVisible = visible;
+    emit trayVisibleChanged(visible);
+}
+
 void AppController::checkForUpdates(){
 #ifndef DISABLE_UPDATER
     CkbUpdater* updater = new CkbUpdater(this);

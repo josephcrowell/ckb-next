@@ -136,7 +136,10 @@ MainWindow::MainWindow(const bool silent, QWidget *parent) :
     trayIcon->show();
     connect(trayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(iconClicked(QSystemTrayIcon::ActivationReason)));
     connect(trayIcon, &CkbSystemTrayIcon::scrollRequested, KbManager::kbManager(), &KbManager::brightnessScroll);
-    toggleTrayIcon(!CkbSettings::get("Program/SuppressTrayIcon").toBool());
+    connect(app, &AppController::trayVisibleChanged, this, &MainWindow::toggleTrayIcon);
+    connect(app, &AppController::trayIconChanged, this, &MainWindow::syncTrayIcon);
+    // The icon is shown above; this hides it when it's suppressed
+    app->setTrayVisible(!CkbSettings::get("Program/SuppressTrayIcon").toBool());
 
 #ifdef Q_OS_MACOS
     // Make a custom "Close" menu action for OSX, as the default one brings up the "still running" popup unnecessarily

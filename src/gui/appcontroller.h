@@ -49,6 +49,12 @@ public:
     inline bool tabsEnabled() const { return _tabsEnabled; }
     void setTabsEnabled(bool enabled);
 
+    // Whether the tray icon is shown; the UI sets it from Program/SuppressTrayIcon at start
+    inline bool trayVisible() const { return _trayVisible; }
+    void setTrayVisible(bool visible);
+    // The tray icon's image setting changed
+    inline void refreshTrayIcon() { emit trayIconChanged(); }
+
 public slots:
     void quit();
     // Checks for a new ckb-next version and emits updateChecked (no-op with DISABLE_UPDATER)
@@ -62,6 +68,8 @@ signals:
     void switchToModeCLI(QString mode);
     void statusTextChanged(const QString& text);
     void tabsEnabledChanged(bool enabled);
+    void trayVisibleChanged(bool visible);
+    void trayIconChanged();
     // Emitted once per device when a newer firmware is available
     void firmwareUpdateAvailable(Kb* device, CkbVersionNumber version);
 
@@ -88,6 +96,7 @@ private:
     QSet<Kb*> fwNotified;
     QString _statusText;
     bool _tabsEnabled = true;
+    bool _trayVisible = true;
     std::function<bool()> windowVisible;
 };
 
