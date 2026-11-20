@@ -163,8 +163,17 @@ void KbProfileDialog::on_profileList_customContextMenuRequested(const QPoint &po
 }
 
 void KbProfileDialog::on_exportButton_clicked(){
-    // Selected items
-    QList<QListWidgetItem*> selectedItems = ui->profileList->selectedItems();
+    // Selected profiles; the "New profile..." row has none and can be selected too
+    QList<KbProfile*> profiles;
+    QStringList names;
+    for(QListWidgetItem* item : ui->profileList->selectedItems()){
+        if(KbProfile* profile = device->find(item->data(GUID).toUuid())){
+            profiles.append(profile);
+            names.append(item->text());
+        }
+    }
+    if(profiles.isEmpty())
+        return;
 
     // Set up the file dialog
     QFileDialog dialog(this);
@@ -174,9 +183,6 @@ void KbProfileDialog::on_exportButton_clicked(){
     dialog.setAcceptMode(QFileDialog::AcceptSave);
 
     // Generate a default filename
-    QStringList names;
-    for(QListWidgetItem* item : selectedItems)
-        names.append(item->text());
     QString filename = ProfilesController::exportFileName(names);
 
     if(!filename.isEmpty())
@@ -191,9 +197,6 @@ void KbProfileDialog::on_exportButton_clicked(){
         return;
 
     // Pick only the first filename
-    QList<KbProfile*> profiles;
-    for(QListWidgetItem* item : selectedItems)
-        profiles.append(device->find(item->data(GUID).toUuid()));
     bool compress = controller->exportProfiles(profiles, filenames.at(0));
 
     if(!compress)
