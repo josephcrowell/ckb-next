@@ -5,6 +5,8 @@
 #include "kbwidget.h"
 #include <QListWidgetItem>
 
+class ProfilesController;
+
 namespace Ui {
 class KbProfileDialog;
 }
@@ -30,16 +32,12 @@ private:
     Ui::KbProfileDialog *ui;
 
     Kb* device;
-    KbProfile* activeProfile;
+    ProfilesController* controller;
     const static int GUID = Qt::UserRole;
     const static int NEW_FLAG = Qt::UserRole + 1;
 
     void repopulate();
     void addNewProfileItem();
-
-    bool verifyHash(const QString& file);
-    void importCleanup(const QStringList& extracted, const QList<QPair<CkbExternalSettings*, QString> >& profileptrs);
-    void extractedFileCleanup(const QStringList& extracted);
 
 };
 
