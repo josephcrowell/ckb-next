@@ -3,7 +3,6 @@
 #include <QtGlobal>
 #include <QByteArray>
 #include <QString>
-#include <QWindow>
 
 #ifdef USE_XCB_SCREENSAVER
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -15,13 +14,8 @@
 #include <xcb/screensaver.h>
 #include <limits.h>
 
-#include "mainwindow.h"
-
 int XcbIdleTimer::getIdleTime() const
 {
-    const MainWindow* const mw = MainWindow::mainWindow;
-    if(!mw || !mw->windowHandle())
-        return 0;
 #if QT_VERSION < QT_VERSION_CHECK(6, 0 ,0)
     xcb_connection_t* conn = QX11Info::connection();
 #else
@@ -33,10 +27,12 @@ int XcbIdleTimer::getIdleTime() const
     conn = x11Application->connection();
 #endif
 
-    xcb_get_geometry_cookie_t geomCookie = xcb_get_geometry(conn, mw->windowHandle()->winId());
-    xcb_get_geometry_reply_t* geomReply = xcb_get_geometry_reply(conn, geomCookie, nullptr);
+    // The time since the last input is the same for every screen, so the first root window will do
+    const xcb_screen_t* screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
+    if(!screen)
+        return 0;
 
-    xcb_screensaver_query_info_cookie_t replyCookie = xcb_screensaver_query_info(conn, geomReply->root);
+    xcb_screensaver_query_info_cookie_t replyCookie = xcb_screensaver_query_info(conn, screen->root);
     xcb_screensaver_query_info_reply_t* replyInfo = xcb_screensaver_query_info_reply(conn, replyCookie, nullptr);
 
     uint32_t userIdle = replyInfo->ms_since_user_input;
