@@ -90,6 +90,7 @@ endif ()
 # Options: GUI
 option(WITH_GUI "Build with Qt GUI to manipulate animations." ON)
 option(PREFER_QT6 "Build with Qt 6 if available." ON)
+cmake_dependent_option(CKB_NEXT_QML_UI "Build the work-in-progress QML user interface (requires Qt >= 6.6)." OFF "WITH_GUI" OFF)
 
 # Options: GUI animations
 option(WITH_ANIMATIONS "Build with animations." ON)

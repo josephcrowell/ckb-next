@@ -319,6 +319,35 @@ if (QT_VERSION VERSION_GREATER_EQUAL "6.6")
 else ()
     message(STATUS "Mode event manager disabled (requires Qt >= 6.6)")
 endif ()
+
+# The QML user interface, built while it replaces the Widgets one
+if (CKB_NEXT_QML_UI)
+    if (QT_VERSION VERSION_LESS "6.6")
+        message(FATAL_ERROR "CKB_NEXT_QML_UI requires Qt >= 6.6")
+    endif ()
+    find_package(Qt6 6.6 REQUIRED COMPONENTS Qml Quick)
+    qt_policy(SET QTP0001 NEW)
+    # Only known since Qt 6.8
+    if (Qt6_VERSION VERSION_GREATER_EQUAL "6.8.0")
+        qt_policy(SET QTP0004 NEW)
+    endif ()
+    qt_add_qml_module(
+        ckb-next
+            URI CkbNext
+            QML_FILES
+              qml/ModeEventManager.qml
+            DEPENDENCIES
+              QtQuick)
+    target_compile_definitions(
+        ckb-next
+            PRIVATE
+                CKB_NEXT_QML_UI)
+    target_link_libraries(
+        ckb-next
+            PRIVATE
+                Qt6::Qml
+                Qt6::Quick)
+endif ()
 if (MACOS)
     target_sources(
         ckb-next
