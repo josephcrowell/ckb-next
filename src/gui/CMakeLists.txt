@@ -335,7 +335,11 @@ if (CKB_NEXT_QML_UI)
         ckb-next
             URI CkbNext
             QML_FILES
+              qml/DowngradeWarning.qml
+              qml/Main.qml
               qml/ModeEventManager.qml
+            SOURCES
+              qmlsingletons.h
             DEPENDENCIES
               QtQuick)
     target_compile_definitions(

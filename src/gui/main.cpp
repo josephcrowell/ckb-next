@@ -15,6 +15,17 @@
 #include <QSurfaceFormat>
 #include <iostream>
 #include "ckbsystemquirks.h"
+#ifdef CKB_NEXT_QML_UI
+#include <QEventLoop>
+#include <QIcon>
+#include <QPointer>
+#include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QWindow>
+#include <memory>
+#include "appcontroller.h"
+#include "keyaction.h"
+#endif
 
 QSharedMemory appShare("ckb-next");
 
@@ -236,6 +247,24 @@ bool checkIfQtCreator(){
     return false;
 }
 
+#ifdef CKB_NEXT_QML_UI
+// Asks whether to start with settings written by a newer ckb-next. Returns 1 for Ok, 0 for
+// Cancel and -1 if the window couldn't be loaded.
+static int askDowngrade(QQmlEngine& engine, const QString& settingsPath){
+    QQmlComponent component(&engine);
+    component.loadFromModule("CkbNext", "DowngradeWarning");
+    std::unique_ptr<QObject> window(component.createWithInitialProperties({{"settingsPath", settingsPath}}));
+    if(!window){
+        qWarning() << "Couldn't load the downgrade warning:" << component.errors();
+        return -1;
+    }
+    QEventLoop loop;
+    QObject::connect(window.get(), SIGNAL(done()), &loop, SLOT(quit()));
+    loop.exec();
+    return window->property("confirmed").toBool() ? 1 : 0;
+}
+#endif
+
 const char* DISPLAY = nullptr;
 const char* argv0 = nullptr;
 
@@ -315,14 +344,33 @@ int main(int argc, char* argv[]){
     if(translator.load(QLocale(), QStringLiteral(""), QStringLiteral(""), QStringLiteral(":/translations")))
         a.installTranslator(&translator);
 
+#ifdef CKB_NEXT_QML_UI
+    // Created before the downgrade warning, which is QML too
+    std::unique_ptr<QQmlApplicationEngine> engine(new QQmlApplicationEngine);
+    QObject::connect(engine.get(), &QQmlApplicationEngine::objectCreationFailed, &a,
+                     [](const QUrl& url){
+                         qWarning() << "Couldn't load" << url;
+                         QCoreApplication::exit(-1);
+                     }, Qt::QueuedConnection);
+#endif
+
     const quint16 currentSettingsVersion = tmpSettings->value("Program/SettingsVersion", 0).toInt();
     if(currentSettingsVersion && currentSettingsVersion > CKB_NEXT_SETTINGS_VER){
+#ifdef CKB_NEXT_QML_UI
+        const int answer = askDowngrade(*engine, tmpSettings->fileName());
+        if(answer < 0){
+            delete tmpSettings;
+            return 1;
+        }
+        if(answer == 0){
+#else
         if(QMessageBox::warning(nullptr, QObject::tr("Downgrade Warning"),
                                 QObject::tr("Downgrading ckb-next will lead to profile data loss. "
                                             "It is recommended to click Cancel and update to the latest version.<br><br>"
                                             "If you wish to continue, back up the settings file located at<blockquote>%1</blockquote>and click OK.").arg(tmpSettings->fileName()),
                                 QMessageBox::Ok, QMessageBox::Cancel)
                 == QMessageBox::Cancel){
+#endif
             delete tmpSettings;
             tmpSettings = nullptr;
             return 0;
@@ -453,6 +501,26 @@ int main(int argc, char* argv[]){
     std::cout << "ckb-next " << CKB_NEXT_VERSION_STR << std::endl;
     qDebug() << "Using" << CkbSystemQuirks::getGlVendor() << CkbSystemQuirks::getGlRenderer();
 
+#ifdef CKB_NEXT_QML_UI
+    AppController app;
+    app.init();
+    engine->loadFromModule("CkbNext", "Main");
+    QPointer<QWindow> window;
+    if(!engine->rootObjects().isEmpty())
+        window = qobject_cast<QWindow*>(engine->rootObjects().constFirst());
+    if(window){
+        window->setIcon(QIcon(":/img/ckb-next.png"));
+        KeyAction::setScreenCursorWindow(window);
+    }
+    app.setWindowVisibleCheck([window](){ return window && window->isVisible(); });
+    app.checkDaemon(silent);
+    app.startScan();
+    const int ret = a.exec();
+    // QML objects must not outlive the devices they show, which shutdown() deletes
+    engine.reset();
+    app.shutdown();
+    return ret;
+#else
     MainWindow w(silent);
     if(!background)
         w.show();
@@ -466,4 +534,5 @@ int main(int argc, char* argv[]){
 #endif
 
     return a.exec();
+#endif
 }
