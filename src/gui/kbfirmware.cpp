@@ -8,7 +8,7 @@
 // Auto check: 6 hr
 static const qint64 AUTO_CHECK_TIME = 60 * 60 * 6000;
 
-KbFirmware::FW::FW() : fwVersion(CkbVersionNumber()), ckbVersion(CkbVersionNumber()) {}
+KbFirmware::FW::FW() : fwVersion(CkbVersionNumber()), ckbVersion(CkbVersionNumber()), productID(0) {}
 
 KbFirmware::KbFirmware() :
     lastCheck(-AUTO_CHECK_TIME), lastFinished(0), tableDownload(nullptr), hasGPG(GPG_UNKNOWN)
