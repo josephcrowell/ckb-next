@@ -23,12 +23,19 @@ void ModeListTableModel::profileChanged(){
     // and we'll always have a valid profile
     emit endResetModel();
     KbProfile* currentProfile = device->currentProfile();
-    for(int i = 0; i < currentProfile->modeCount(); i++){
-        connect(currentProfile->at(i)->winInfo(), &KbWindowInfo::enableStateChanged, this, [this, i](){
-            QModelIndex changed = index(i, COL_EVENT_ICON);
-            emit dataChanged(changed, changed, {Qt::DecorationRole});
-        });
-    }
+    for(int i = 0; i < currentProfile->modeCount(); i++)
+        watchEvents(currentProfile->at(i));
+}
+
+void ModeListTableModel::watchEvents(KbMode* mode){
+    // Look the row up when the state changes, as modes can be reordered by dragging
+    connect(mode->winInfo(), &KbWindowInfo::enableStateChanged, this, [this, mode](){
+        const int row = device->currentProfile()->indexOf(mode);
+        if(row < 0)
+            return;
+        const QModelIndex changed = index(row, COL_EVENT_ICON);
+        emit dataChanged(changed, changed, {Qt::DecorationRole});
+    });
 }
 
 int ModeListTableModel::rowCount(const QModelIndex& parent) const {
@@ -133,14 +140,13 @@ bool ModeListTableModel::setData(const QModelIndex& index, const QVariant& value
 
 int ModeListTableModel::addNewMode(){
     KbMode* newMode = device->newMode();
-    // "Add" the new mode item back
-    emit beginInsertRows(QModelIndex(), rowCount()-1, rowCount()-1);
+    // The new mode goes in before the "New mode" row
+    const int newrow = rowCount() - 1;
+    beginInsertRows(QModelIndex(), newrow, newrow);
     device->currentProfile()->append(newMode);
+    endInsertRows();
+    watchEvents(newMode);
     device->setCurrentMode(newMode);
-    const int newrow = rowCount() - 2;
-    // Update the previous new mode item with the new mode
-    emit dataChanged(index(newrow, 0), index(newrow, columnCount()-1), {Qt::DisplayRole, Qt::EditRole, Qt::DecorationRole});
-    emit endInsertRows();
     return newrow;
 }
 

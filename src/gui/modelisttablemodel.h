@@ -52,6 +52,8 @@ private:
     Kb* device;
     QIcon modeIcon(const int i) const;
     static QIcon eventIcon(KbMode* mode);
+    // Repaint the mode's event icon when its window rules are turned on or off
+    void watchEvents(KbMode* mode);
     int highlightedRow;
     bool _hasFocus;
     int activeRow;
