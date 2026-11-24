@@ -1,6 +1,7 @@
 #include "modelisttablemodel.h"
 #include <QIcon>
 #include <QFont>
+#include <QUrl>
 
 ModeListTableModel::ModeListTableModel(Kb *dev, QObject* parent) : QAbstractTableModel(parent), device(dev),
     highlightedRow(-1), _hasFocus(false)
@@ -34,7 +35,7 @@ void ModeListTableModel::watchEvents(KbMode* mode){
         if(row < 0)
             return;
         const QModelIndex changed = index(row, COL_EVENT_ICON);
-        emit dataChanged(changed, changed, {Qt::DecorationRole});
+        emit dataChanged(changed, changed, {Qt::DecorationRole, EventsEnabledRole});
     });
 }
 
@@ -50,14 +51,23 @@ int ModeListTableModel::columnCount(const QModelIndex& parent) const {
     return COL_MODE_MAX;
 }
 
-QIcon ModeListTableModel::modeIcon(const int i) const{
+QString ModeListTableModel::modeIconPath(const int i) const{
     const KbProfile* const currentProfile = device->currentProfile();
     const KbProfile* const hwProfile = device->hwProfile();
     int hwModeCount = device->hwModeCount;
     if(i >= hwModeCount)
-        return QIcon(":/img/icon_mode.png");
+        return QStringLiteral(":/img/icon_mode.png");
     else
-        return QIcon(QString(currentProfile == hwProfile ? ":/img/icon_mode%1_hardware.png" : ":/img/icon_mode%1.png").arg(i + 1));
+        return QString(currentProfile == hwProfile ? ":/img/icon_mode%1_hardware.png" : ":/img/icon_mode%1.png").arg(i + 1);
+}
+
+QHash<int, QByteArray> ModeListTableModel::roleNames() const {
+    QHash<int, QByteArray> names = QAbstractTableModel::roleNames();
+    names.insert(ModeNameRole, "modeName");
+    names.insert(ModeIconRole, "modeIcon");
+    names.insert(EventsEnabledRole, "eventsEnabled");
+    names.insert(NewModeRowRole, "isNewModeRow");
+    return names;
 }
 
 QIcon ModeListTableModel::eventIcon(KbMode* mode){
@@ -73,6 +83,17 @@ QVariant ModeListTableModel::data(const QModelIndex& index, int role) const{
         return QVariant();
     const int row = index.row();
     const int col = index.column();
+    const bool newModeRow = row > prof->modeCount() - 1;
+    switch(role){
+    case ModeNameRole:
+        return newModeRow ? tr("New mode...") : prof->at(row)->name();
+    case ModeIconRole:
+        return QUrl(QLatin1String("qrc") + (newModeRow ? QStringLiteral(":/img/icon_plus.png") : modeIconPath(row)));
+    case EventsEnabledRole:
+        return !newModeRow && prof->at(row)->winInfo()->isEnabled();
+    case NewModeRowRole:
+        return newModeRow;
+    }
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
         // If the index is past modeCount, then we are adding the New mode... button
         if(row > prof->modeCount() - 1){
@@ -92,7 +113,7 @@ QVariant ModeListTableModel::data(const QModelIndex& index, int role) const{
 
         switch(col){
         case COL_MODE_ICON:
-            return modeIcon(row);
+            return QIcon(modeIconPath(row));
         case COL_EVENT_ICON:
             return eventIcon(prof->at(row));
         }
@@ -133,7 +154,7 @@ bool ModeListTableModel::setData(const QModelIndex& index, const QVariant& value
         return false;
 
     prof->at(row)->name(value.toString());
-    emit dataChanged(index, index, {Qt::EditRole, Qt::DisplayRole});
+    emit dataChanged(index, index, {Qt::EditRole, Qt::DisplayRole, ModeNameRole});
 
     return true;
 }

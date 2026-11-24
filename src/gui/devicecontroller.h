@@ -1,6 +1,7 @@
 #ifndef DEVICECONTROLLER_H
 #define DEVICECONTROLLER_H
 
+#include <QAbstractItemModel>
 #include <QList>
 #include <QObject>
 #include <QPair>
@@ -29,6 +30,9 @@ class DeviceController : public QObject
     Q_PROPERTY(int hardwareProfileIndex READ hardwareProfileIndex NOTIFY profilesChanged)
     Q_PROPERTY(int currentProfileIndex READ currentProfileIndex NOTIFY currentProfileChanged)
     Q_PROPERTY(bool canSaveToHardware READ canSaveToHardware CONSTANT)
+    Q_PROPERTY(QAbstractItemModel* modeModel READ modeModel CONSTANT)
+    Q_PROPERTY(int currentModeIndex READ currentModeIndex NOTIFY currentModeChanged)
+    Q_PROPERTY(bool canManageModeEvents READ canManageModeEvents CONSTANT)
     Q_PROPERTY(bool hasLightTab READ hasLightTab CONSTANT)
     Q_PROPERTY(bool hasBindTab READ hasBindTab CONSTANT)
     Q_PROPERTY(bool hasLegacyLightTab READ hasLegacyLightTab CONSTANT)
@@ -40,6 +44,12 @@ public:
     inline Kb* device() const { return _device; }
     // Modes of the current profile, plus a "New mode" row at the end
     inline ModeListTableModel* modes() const { return _modes; }
+    // The same model for QML, which reads it through ModeListTableModel's named roles
+    QAbstractItemModel* modeModel() const;
+    // Row of the device's current mode, or -1
+    int currentModeIndex() const;
+    // Window rules need active window detection and the QML event manager
+    bool canManageModeEvents() const;
 
     // Profiles, in device order
     QStringList profileNames() const;
@@ -51,7 +61,9 @@ public:
     // The mode last made current, or nullptr after it was deleted
     inline KbMode* currentMode() const { return _currentMode; }
     // Switch to the mode at row. On the "New mode" row, add a mode and return its row; else -1.
-    int selectMode(int row);
+    Q_INVOKABLE int selectMode(int row);
+    // Rename the mode at row; ignored on the "New mode" row
+    Q_INVOKABLE void renameMode(int row, const QString& name);
     // Whether row holds the current mode
     bool isCurrentModeRow(int row) const;
     // Modes required by the hardware can't be deleted
@@ -64,8 +76,8 @@ public:
     void moveModeUp(int row);
     void moveModeDown(int row);
     // Toggle the current mode's window rules. True if it has none yet, so they need editing.
-    bool toggleModeEvents(int row);
-    void enableModeEvents();
+    Q_INVOKABLE bool toggleModeEvents(int row);
+    Q_INVOKABLE void enableModeEvents();
 
     Q_INVOKABLE void saveToHardware();
     // Only devices with the hwload feature keep profiles in hardware
@@ -148,6 +160,8 @@ signals:
     void profileSwitched(int index);
     // The device's current profile changed, by any route
     void currentProfileChanged();
+    // The device's current mode changed (not emitted when only its row moves)
+    void currentModeChanged();
     // Device information, poll rate, layout or battery indicator setting changed
     void infoUpdated();
     // Only for devices with a battery

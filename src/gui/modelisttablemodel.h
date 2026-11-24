@@ -23,7 +23,13 @@ public:
     enum Roles {
         HighlightedRole = Qt::UserRole,
         ActiveFocusRole,
+        // A whole row's data in any column, for the QML list
+        ModeNameRole,
+        ModeIconRole,
+        EventsEnabledRole,
+        NewModeRowRole,
     };
+    QHash<int, QByteArray> roleNames() const override;
     Qt::ItemFlags flags(const QModelIndex& index) const;
     bool setData(const QModelIndex& index, const QVariant& value, int role);
     inline void setHighlightedRow(const int row) {
@@ -50,7 +56,7 @@ public slots:
     void profileChanged();
 private:
     Kb* device;
-    QIcon modeIcon(const int i) const;
+    QString modeIconPath(const int i) const;
     static QIcon eventIcon(KbMode* mode);
     // Repaint the mode's event icon when its window rules are turned on or off
     void watchEvents(KbMode* mode);

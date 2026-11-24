@@ -63,6 +63,25 @@ void DeviceController::updateCurrentMode(){
     if(_device->currentProfile()->indexOf(_device->currentMode()) < 0)
         return;
     _currentMode = _device->currentMode();
+    emit currentModeChanged();
+}
+
+QAbstractItemModel* DeviceController::modeModel() const {
+    return _modes;
+}
+
+int DeviceController::currentModeIndex() const {
+    // No profile until the device has loaded its settings
+    const KbProfile* const profile = _device->currentProfile();
+    return profile ? profile->indexOf(_device->currentMode()) : -1;
+}
+
+bool DeviceController::canManageModeEvents() const {
+#if defined(USE_XCB_EWMH) && defined(USE_QML_EVENT_MGR)
+    return true;
+#else
+    return false;
+#endif
 }
 
 int DeviceController::selectMode(int row){
@@ -71,6 +90,10 @@ int DeviceController::selectMode(int row){
     KbMode* mode = _device->currentProfile()->at(row);
     _device->setCurrentMode(mode);
     return -1;
+}
+
+void DeviceController::renameMode(int row, const QString& name){
+    _modes->setData(_modes->index(row, ModeListTableModel::COL_MODE_NAME), name, Qt::EditRole);
 }
 
 bool DeviceController::isCurrentModeRow(int row) const {

@@ -59,6 +59,7 @@ Pane {
                         console.warn("Device page: the profile manager isn't in the QML UI yet");
                     // Choosing an entry overrides the binding; follow the device again
                     currentIndex = Qt.binding(() => page.device.currentProfileIndex);
+                    modeList.focusList();
                 }
 
                 contentItem: RowLayout {
@@ -92,10 +93,13 @@ Pane {
                 }
             }
 
-            // Mode list, from step 2.5b
-            Item {
+            ModeList {
+                id: modeList
+
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                enabled: AppController.tabsEnabled
+                device: page.device
             }
 
             // A disabled button gets no hover, so the reason it's disabled is shown from here
