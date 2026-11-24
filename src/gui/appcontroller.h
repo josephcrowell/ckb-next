@@ -17,6 +17,7 @@ class XWindowDetector;
 class AppController : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool tabsEnabled READ tabsEnabled NOTIFY tabsEnabledChanged)
 public:
     explicit AppController(QObject* parent = nullptr);
     ~AppController();
@@ -54,6 +55,12 @@ public:
     void setTrayVisible(bool visible);
     // The tray icon's image setting changed
     inline void refreshTrayIcon() { emit trayIconChanged(); }
+
+    // True once quit() was called, so the main window lets Qt close it
+    Q_INVOKABLE bool isQuitting() const { return _quitting; }
+    // Whether the "still runs in the background" message was shown before (Popups/BGWarning)
+    Q_INVOKABLE bool backgroundWarningShown() const;
+    Q_INVOKABLE void setBackgroundWarningShown();
 
 public slots:
     void quit();
@@ -97,6 +104,7 @@ private:
     QString _statusText;
     bool _tabsEnabled = true;
     bool _trayVisible = true;
+    bool _quitting = false;
     std::function<bool()> windowVisible;
 };
 

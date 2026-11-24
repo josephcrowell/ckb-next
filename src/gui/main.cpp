@@ -504,6 +504,7 @@ int main(int argc, char* argv[]){
 #ifdef CKB_NEXT_QML_UI
     AppController app;
     app.init();
+    engine->setInitialProperties({{"startHidden", background}});
     engine->loadFromModule("CkbNext", "Main");
     QPointer<QWindow> window;
     if(!engine->rootObjects().isEmpty())

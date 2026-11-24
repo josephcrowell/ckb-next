@@ -86,7 +86,17 @@ void AppController::shutdown(){
 }
 
 void AppController::quit(){
+    // Qt closes every window before quitting; the QML window accepts that close only now
+    _quitting = true;
     qApp->quit();
+}
+
+bool AppController::backgroundWarningShown() const {
+    return CkbSettings::get("Popups/BGWarning").toBool();
+}
+
+void AppController::setBackgroundWarningShown(){
+    CkbSettings::set("Popups/BGWarning", true);
 }
 
 void AppController::autoCheckForUpdates(){

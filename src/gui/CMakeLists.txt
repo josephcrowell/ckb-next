@@ -339,6 +339,8 @@ if (CKB_NEXT_QML_UI)
               qml/Main.qml
               qml/ModeEventManager.qml
             SOURCES
+              devicelistmodel.cpp
+              devicelistmodel.h
               qmlsingletons.h
             DEPENDENCIES
               QtQuick)
