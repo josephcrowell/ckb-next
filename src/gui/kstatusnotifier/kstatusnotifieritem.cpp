@@ -1236,24 +1236,13 @@ KDbusImageStruct KStatusNotifierItemPrivate::imageToStruct(const QImage &image)
     KDbusImageStruct structIcon;
     structIcon.width = image.size().width();
     structIcon.height = image.size().height();
-    if (image.format() == QImage::Format_ARGB32) {
-        structIcon.data = QByteArray((char *)image.bits(), image.sizeInBytes());
-    } else {
-        QImage image32 = image.convertToFormat(QImage::Format_ARGB32);
-        structIcon.data = QByteArray((char *)image32.bits(), image32.sizeInBytes());
-    }
+    const QImage image32 = image.format() == QImage::Format_ARGB32
+            ? image : image.convertToFormat(QImage::Format_ARGB32);
 
-    // swap to network byte order if we are little endian
-    if (QSysInfo::ByteOrder == QSysInfo::LittleEndian) {
-        const QByteArray& ba = structIcon.data;
-        const qsizetype count = (ba.size() + (sizeof(quint32) - 1)) / sizeof(quint32);
-        quint32 *uintBuf = new quint32[count]();
-        memcpy(uintBuf, ba.data(), ba.size());
-        for (qsizetype i = 0; i < count; ++i)
-            uintBuf[i] = qToBigEndian(uintBuf[i]);
-        structIcon.data = QByteArray(reinterpret_cast<const char*>(uintBuf), ba.size());
-        delete[] uintBuf;
-    }
+    // Pixels go over D-Bus in network byte order
+    structIcon.data.resize(image32.sizeInBytes());
+    qToBigEndian<quint32>(image32.constBits(), image32.sizeInBytes() / sizeof(quint32),
+                          structIcon.data.data());
 
     return structIcon;
 }
