@@ -172,9 +172,7 @@ ApplicationWindow {
         Repeater {
             model: devices
 
-            // Device page, filled in from step 2.5
-            Item {
-                required property DeviceController device
+            DevicePage {
             }
         }
         // Settings page, filled in from step 2.6

@@ -25,6 +25,15 @@ class DeviceController : public QObject
     Q_PROPERTY(QString batteryLevelText READ batteryLevelText NOTIFY batteryTextChanged)
     Q_PROPERTY(QString batteryStatusText READ batteryStatusText NOTIFY batteryTextChanged)
     Q_PROPERTY(QString batteryToolTip READ batteryToolTip NOTIFY batteryTextChanged)
+    Q_PROPERTY(QStringList profileNames READ profileNames NOTIFY profilesChanged)
+    Q_PROPERTY(int hardwareProfileIndex READ hardwareProfileIndex NOTIFY profilesChanged)
+    Q_PROPERTY(int currentProfileIndex READ currentProfileIndex NOTIFY currentProfileChanged)
+    Q_PROPERTY(bool canSaveToHardware READ canSaveToHardware CONSTANT)
+    Q_PROPERTY(bool hasLightTab READ hasLightTab CONSTANT)
+    Q_PROPERTY(bool hasBindTab READ hasBindTab CONSTANT)
+    Q_PROPERTY(bool hasLegacyLightTab READ hasLegacyLightTab CONSTANT)
+    Q_PROPERTY(bool hasKeyboardPerfTab READ hasKeyboardPerfTab CONSTANT)
+    Q_PROPERTY(bool hasMousePerfTab READ hasMousePerfTab CONSTANT)
 public:
     DeviceController(Kb* device, XWindowDetector* windowDetector, QObject* parent = nullptr);
 
@@ -37,7 +46,7 @@ public:
     int currentProfileIndex() const;
     int hardwareProfileIndex() const;
     // Switch to the profile at index. False if index is past the last profile.
-    bool selectProfile(int index);
+    Q_INVOKABLE bool selectProfile(int index);
 
     // The mode last made current, or nullptr after it was deleted
     inline KbMode* currentMode() const { return _currentMode; }
@@ -58,7 +67,16 @@ public:
     bool toggleModeEvents(int row);
     void enableModeEvents();
 
-    void saveToHardware();
+    Q_INVOKABLE void saveToHardware();
+    // Only devices with the hwload feature keep profiles in hardware
+    bool canSaveToHardware() const;
+
+    // Which sub-tabs the device page has, besides Device
+    bool hasLightTab() const;
+    bool hasBindTab() const;
+    bool hasLegacyLightTab() const;
+    bool hasKeyboardPerfTab() const;
+    bool hasMousePerfTab() const;
 
     // Device information
     QString modelName() const;
@@ -128,6 +146,8 @@ signals:
     void profilesChanged();
     // switchToProfile() selected the profile at index
     void profileSwitched(int index);
+    // The device's current profile changed, by any route
+    void currentProfileChanged();
     // Device information, poll rate, layout or battery indicator setting changed
     void infoUpdated();
     // Only for devices with a battery

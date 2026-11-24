@@ -59,8 +59,9 @@ void DeviceListModel::removeDevice(Kb* device){
     beginRemoveRows(QModelIndex(), row, row);
     DeviceController* controller = _controllers.takeAt(row);
     endRemoveRows();
-    // The device is deleted after this signal, so the controller can't wait for deleteLater
-    delete controller;
+    // Later, like the Widgets page: the QML page is destroyed later too, and its bindings
+    // must not see the controller go first
+    controller->deleteLater();
 }
 
 int DeviceListModel::rowOf(const Kb* device) const {

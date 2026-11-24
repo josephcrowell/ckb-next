@@ -22,6 +22,7 @@ DeviceController::DeviceController(Kb* device, XWindowDetector* windowDetector, 
     connect(device, &Kb::profileRenamed, this, &DeviceController::profilesChanged);
     connect(device, &Kb::profileAdded, this, &DeviceController::profilesChanged);
     connect(device, &Kb::modeChanged, this, &DeviceController::updateCurrentMode);
+    connect(device, &Kb::profileChanged, this, &DeviceController::currentProfileChanged);
     connect(device, &Kb::infoUpdated, this, &DeviceController::infoUpdated);
     if(hasBattery()){
         connect(device, &Kb::batteryChanged, this, &DeviceController::batteryChanged);
@@ -151,6 +152,33 @@ void DeviceController::saveToHardware(){
     _device->hwSave();
     emit profilesChanged();
     _modes->profileChanged();
+}
+
+bool DeviceController::canSaveToHardware() const {
+    return _device->hwload;
+}
+
+// The tab rules of the Widgets device page (KbWidget's constructor)
+bool DeviceController::hasLightTab() const {
+    return _device->features.contains("rgb") || _device->model() == KeyMap::M95;
+}
+
+bool DeviceController::hasBindTab() const {
+    return _device->features.contains("bind");
+}
+
+bool DeviceController::hasLegacyLightTab() const {
+    return _device->model() == KeyMap::K95L;
+}
+
+bool DeviceController::hasKeyboardPerfTab() const {
+    return _device->features.contains("rgb") && _device->isKeyboard();
+}
+
+bool DeviceController::hasMousePerfTab() const {
+    if(_device->features.contains("rgb"))
+        return _device->isMouse();
+    return _device->model() == KeyMap::M95;
 }
 
 QString DeviceController::modelName() const {
