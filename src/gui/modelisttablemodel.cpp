@@ -171,6 +171,18 @@ int ModeListTableModel::addNewMode(){
     return newrow;
 }
 
+bool ModeListTableModel::moveMode(int from, int to){
+    KbProfile* const prof = device->currentProfile();
+    const int count = prof ? prof->modeCount() : 0;
+    if(from < 0 || to < 0 || from >= count || to >= count || from == to)
+        return false;
+    // beginMoveRows takes the row the mode goes before, counted before the move
+    beginMoveRows(QModelIndex(), from, from, QModelIndex(), to > from ? to + 1 : to);
+    prof->move(from, to);
+    endMoveRows();
+    return true;
+}
+
 Qt::DropActions ModeListTableModel::supportedDropActions() const{
     return Qt::MoveAction;
 }

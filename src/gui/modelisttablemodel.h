@@ -42,6 +42,8 @@ public:
     int addNewMode();
     bool dropMimeData(const QMimeData* data, Qt::DropAction action, int dstrow, int column, const QModelIndex& parent);
     Qt::DropActions supportedDropActions() const;
+    // Move the mode at row from to row to; false if either isn't a mode row or they match
+    bool moveMode(int from, int to);
     inline void setHasFocus(const bool f){
         _hasFocus = f;
         emit dataChanged(index(0, COL_EVENT_ICON), index(rowCount()-1, COL_EVENT_ICON), {ActiveFocusRole});

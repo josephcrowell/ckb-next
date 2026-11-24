@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Fusion
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import CkbNext
 
@@ -23,11 +24,126 @@ Frame {
         border.color: frame.palette.mid
     }
 
+    // The current mode's menu, as in the Widgets list
+    Menu {
+        id: menu
+
+        property int row: -1
+        property bool canDelete: false
+        property bool canMoveUp: false
+        property bool canMoveDown: false
+
+        MenuItem {
+            text: qsTranslate("KbWidget", "Rename...")
+            onTriggered: list.editingRow = menu.row
+        }
+        MenuItem {
+            text: qsTranslate("KbWidget", "Duplicate")
+            onTriggered: frame.device.duplicateMode(menu.row)
+        }
+        MenuItem {
+            // Modes the hardware needs can't be deleted
+            text: qsTranslate("KbWidget", "Delete")
+            enabled: menu.canDelete
+            onTriggered: deleteDialog.open()
+        }
+        MenuSeparator {
+            id: eventsTop
+        }
+        MenuItem {
+            id: manageEvents
+
+            text: qsTranslate("KbWidget", "Manage Events")
+            onTriggered: list.openEventManager()
+        }
+        MenuSeparator {
+            id: eventsBottom
+        }
+        MenuItem {
+            text: qsTranslate("KbWidget", "Move Up")
+            enabled: menu.canMoveUp
+            onTriggered: frame.device.moveModeUp(menu.row)
+        }
+        MenuItem {
+            text: qsTranslate("KbWidget", "Move Down")
+            enabled: menu.canMoveDown
+            onTriggered: frame.device.moveModeDown(menu.row)
+        }
+
+        // A hidden item still takes space in a Menu, so the events entries are taken out
+        Component.onCompleted: {
+            if (frame.device.canManageModeEvents)
+                return;
+            removeItem(eventsBottom);
+            removeItem(manageEvents);
+            removeItem(eventsTop);
+        }
+    }
+
+    // A new dialog for each question: Qt 6.11's non-native MessageDialog adds its buttons
+    // again each time it is reopened
+    Loader {
+        id: deleteDialog
+
+        function open() {
+            active = true;
+        }
+        function finish() {
+            active = false;
+        }
+
+        active: false
+
+        sourceComponent: MessageDialog {
+            title: qsTranslate("KbWidget", "Delete mode")
+            text: qsTranslate("KbWidget", "Are you sure you want to delete this mode?")
+            buttons: MessageDialog.Yes | MessageDialog.No
+            Component.onCompleted: open()
+            onVisibleChanged: {
+                if (!visible)
+                    Qt.callLater(deleteDialog.finish);
+            }
+            onButtonClicked: (button) => {
+                // The current mode may have changed (window rules) while the question was open
+                if (button === MessageDialog.Yes && frame.device.isCurrentModeRow(menu.row) && frame.device.canDeleteMode())
+                    frame.device.deleteMode(menu.row);
+            }
+        }
+    }
+
     ListView {
         id: list
 
         // Row whose name is being edited, or -1
         property int editingRow: -1
+        // Row being dragged, or -1, and the gap it would drop into (row it goes before)
+        property int dragRow: -1
+        property int dropGap: -1
+
+        function openMenu(row: int) {
+            if (!frame.device.isCurrentModeRow(row))
+                return;
+            menu.row = row;
+            menu.canDelete = frame.device.canDeleteMode();
+            menu.canMoveUp = frame.device.canMoveModeUp(row);
+            menu.canMoveDown = frame.device.canMoveModeDown(row);
+            menu.popup();
+        }
+
+        function dragTo(row: int, y: real) {
+            dragRow = row;
+            // Not past "New mode...", the last row
+            dropGap = Math.max(0, Math.min(count - 1, Math.round(y / 28)));
+        }
+
+        function finishDrag() {
+            if (dragRow < 0)
+                return;
+            const from = dragRow;
+            const to = dropGap > from ? dropGap - 1 : dropGap;
+            dragRow = -1;
+            frame.device.moveMode(from, to);
+        }
 
         function syncCurrent() {
             currentIndex = frame.device.currentModeIndex;
@@ -99,6 +215,18 @@ Frame {
             function onLayoutChanged() {
                 list.syncCurrent();
             }
+            // No sync on rowsMoved: the view moves its current row with the item afterwards,
+            // which would move a synced row a second time
+        }
+
+        // Where a dragged mode would go, as the Widgets drop indicator
+        Rectangle {
+            visible: list.dragRow >= 0
+            z: 2
+            width: list.width
+            height: 2
+            y: list.dropGap * 28 - 1
+            color: frame.palette.text
         }
 
         delegate: Rectangle {
@@ -129,11 +257,32 @@ Frame {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
+                    // Press selects, right press opens the menu, a drag moves the mode
                     MouseArea {
+                        property real pressY: 0
+
                         anchors.fill: parent
-                        onPressed: list.selectRow(row.index)
-                        onDoubleClicked: {
-                            if (!row.isNewModeRow)
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onPressed: (mouse) => {
+                            // A right click doesn't add a mode
+                            if (mouse.button === Qt.RightButton && row.isNewModeRow)
+                                return;
+                            list.selectRow(row.index);
+                            if (mouse.button === Qt.RightButton)
+                                list.openMenu(row.index);
+                            pressY = mouse.y;
+                        }
+                        onPositionChanged: (mouse) => {
+                            if (row.isNewModeRow || !(pressedButtons & Qt.LeftButton))
+                                return;
+                            if (list.dragRow < 0 && Math.abs(mouse.y - pressY) < Application.styleHints.startDragDistance)
+                                return;
+                            list.dragTo(row.index, mapToItem(list.contentItem, mouse.x, mouse.y).y);
+                        }
+                        onReleased: list.finishDrag()
+                        onCanceled: list.dragRow = -1
+                        onDoubleClicked: (mouse) => {
+                            if (!row.isNewModeRow && mouse.button === Qt.LeftButton)
                                 list.editingRow = row.index;
                         }
                     }
@@ -185,13 +334,22 @@ Frame {
 
                     MouseArea {
                         anchors.fill: parent
-                        onPressed: list.selectRow(row.index)
-                        onClicked: {
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onPressed: (mouse) => {
+                            if (mouse.button === Qt.RightButton && row.isNewModeRow)
+                                return;
+                            list.selectRow(row.index);
+                            if (mouse.button === Qt.RightButton)
+                                list.openMenu(row.index);
+                        }
+                        onClicked: (mouse) => {
+                            if (mouse.button !== Qt.LeftButton)
+                                return;
                             if (!row.isNewModeRow && frame.device.toggleModeEvents(row.index))
                                 list.openEventManager();
                         }
-                        onDoubleClicked: {
-                            if (row.isNewModeRow)
+                        onDoubleClicked: (mouse) => {
+                            if (row.isNewModeRow || mouse.button !== Qt.LeftButton)
                                 return;
                             frame.device.enableModeEvents();
                             list.openEventManager();

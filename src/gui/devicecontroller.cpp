@@ -155,6 +155,10 @@ void DeviceController::moveModeDown(int row){
     _modes->profileChanged();
 }
 
+void DeviceController::moveMode(int from, int to){
+    _modes->moveMode(from, to);
+}
+
 bool DeviceController::toggleModeEvents(int row){
     if(row > _device->currentProfile()->modeCount() - 1)
         return false;

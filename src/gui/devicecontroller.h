@@ -65,16 +65,18 @@ public:
     // Rename the mode at row; ignored on the "New mode" row
     Q_INVOKABLE void renameMode(int row, const QString& name);
     // Whether row holds the current mode
-    bool isCurrentModeRow(int row) const;
+    Q_INVOKABLE bool isCurrentModeRow(int row) const;
     // Modes required by the hardware can't be deleted
-    bool canDeleteMode() const;
-    bool canMoveModeUp(int row) const;
-    bool canMoveModeDown(int row) const;
+    Q_INVOKABLE bool canDeleteMode() const;
+    Q_INVOKABLE bool canMoveModeUp(int row) const;
+    Q_INVOKABLE bool canMoveModeDown(int row) const;
     // These act on the current mode, which is at row
-    void duplicateMode(int row);
-    void deleteMode(int row);
-    void moveModeUp(int row);
-    void moveModeDown(int row);
+    Q_INVOKABLE void duplicateMode(int row);
+    Q_INVOKABLE void deleteMode(int row);
+    Q_INVOKABLE void moveModeUp(int row);
+    Q_INVOKABLE void moveModeDown(int row);
+    // Move the mode at row from so it ends up at row to, as dragging does
+    Q_INVOKABLE void moveMode(int from, int to);
     // Toggle the current mode's window rules. True if it has none yet, so they need editing.
     Q_INVOKABLE bool toggleModeEvents(int row);
     Q_INVOKABLE void enableModeEvents();
