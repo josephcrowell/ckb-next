@@ -341,7 +341,6 @@ void DeviceController::setShowBatteryIndicator(bool show){
     if(!hasBattery())
         return;
     _device->setShowBatteryIndicator(show);
-    _device->needsSave();
 }
 
 bool DeviceController::hasFirmwareUpdates() const {
