@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Fusion
 import QtQuick.Dialogs
-import QtQuick.Layouts
 import Qt.labs.platform as Platform
 import CkbNext
 
@@ -46,13 +45,23 @@ ApplicationWindow {
     DeviceListModel {
         id: devices
 
-        // A new device is shown if Settings was the current tab, as in the Widgets window
+        // A new device is shown if Settings was the current tab, as in the Widgets window. The
+        // tab is selected once the tab bar has its button; until then a device connected in
+        // the same scan doesn't count as coming after Settings.
         property bool settingsWasCurrent: false
+        property int pendingTab: -1
 
-        onRowsAboutToBeInserted: settingsWasCurrent = tabBar.currentIndex === tabBar.count - 1
+        function selectPendingTab() {
+            tabBar.setCurrentIndex(pendingTab);
+            pendingTab = -1;
+        }
+
+        onRowsAboutToBeInserted: settingsWasCurrent = pendingTab < 0 && tabBar.currentIndex === tabBar.count - 1
         onRowsInserted: (parent, first) => {
-            if (settingsWasCurrent)
-                Qt.callLater(tabBar.setCurrentIndex, first);
+            if (!settingsWasCurrent)
+                return;
+            pendingTab = first;
+            Qt.callLater(selectPendingTab);
         }
     }
 
@@ -165,18 +174,27 @@ ApplicationWindow {
         }
     }
 
-    StackLayout {
+    // Each page is shown by its own index: a Repeater's items come after the Settings page in
+    // the child order, so a StackLayout would show the wrong page
+    Item {
         anchors.fill: parent
-        currentIndex: tabBar.currentIndex
 
         Repeater {
+            id: devicePages
+
             model: devices
 
             DevicePage {
+                required property int index
+
+                anchors.fill: parent
+                visible: index === tabBar.currentIndex
             }
         }
         // Settings page, filled in from step 2.6
         Item {
+            anchors.fill: parent
+            visible: tabBar.currentIndex === devicePages.count
         }
     }
 }
