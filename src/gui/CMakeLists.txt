@@ -341,6 +341,7 @@ if (CKB_NEXT_QML_UI)
             SOURCES
               devicelistmodel.cpp
               devicelistmodel.h
+              qmlforeigntypes.h
               qmlsingletons.h
             DEPENDENCIES
               QtQuick)

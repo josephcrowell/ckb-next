@@ -24,6 +24,7 @@
 #include <QWindow>
 #include <memory>
 #include "appcontroller.h"
+#include "ckbsettings.h"
 #include "keyaction.h"
 #endif
 
@@ -504,6 +505,7 @@ int main(int argc, char* argv[]){
 #ifdef CKB_NEXT_QML_UI
     AppController app;
     app.init();
+    app.setTrayVisible(!CkbSettings::get("Program/SuppressTrayIcon").toBool());
     engine->setInitialProperties({{"startHidden", background}});
     engine->loadFromModule("CkbNext", "Main");
     QPointer<QWindow> window;

@@ -91,6 +91,13 @@ void AppController::quit(){
     qApp->quit();
 }
 
+QString AppController::trayIconName() const {
+    // Colour unless turned off; a first start has no setting yet
+    if(CkbSettings::get("Program/RGBIcon", QVariant(true)).toBool())
+        return QStringLiteral("ckb-next");
+    return QStringLiteral("ckb-next-monochrome");
+}
+
 bool AppController::backgroundWarningShown() const {
     return CkbSettings::get("Popups/BGWarning").toBool();
 }

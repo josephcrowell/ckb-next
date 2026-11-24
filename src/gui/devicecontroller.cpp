@@ -6,6 +6,8 @@
 #include "kbwindowinfo.h"
 #include "modelisttablemodel.h"
 #include "xcb/xwindowdetector.h"
+#include <iterator>
+#include <QCoreApplication>
 #include <QDebug>
 
 DeviceController::DeviceController(Kb* device, XWindowDetector* windowDetector, QObject* parent) :
@@ -21,8 +23,14 @@ DeviceController::DeviceController(Kb* device, XWindowDetector* windowDetector, 
     connect(device, &Kb::profileAdded, this, &DeviceController::profilesChanged);
     connect(device, &Kb::modeChanged, this, &DeviceController::updateCurrentMode);
     connect(device, &Kb::infoUpdated, this, &DeviceController::infoUpdated);
-    if(hasBattery())
+    if(hasBattery()){
         connect(device, &Kb::batteryChanged, this, &DeviceController::batteryChanged);
+        connect(device, &Kb::batteryChanged, this, [this](){
+            _batteryKnown = true;
+            emit batteryTextChanged();
+        });
+    }
+    connect(device, &Kb::showBatteryIndicatorChanged, this, &DeviceController::showBatteryIndicatorChanged);
     connect(AppController::instance(), &AppController::switchToProfileCLI, this, &DeviceController::switchToProfile);
     connect(AppController::instance(), &AppController::switchToModeCLI, this, &DeviceController::switchToMode);
 }
@@ -267,8 +275,62 @@ void DeviceController::setLayout(int index){
     _device->layout(layout, true);
 }
 
+QString DeviceController::name() const {
+    return _device->usbModel;
+}
+
 bool DeviceController::hasBattery() const {
     return _device->features.contains("battery");
+}
+
+// The battery strings keep the translation context of the Widgets tray icon
+static const char* const batteryLevelNames[] = {
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "Not connected"),
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "Critical"),
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "Low"),
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "Medium"),
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "High"),
+};
+static const char* const batteryStatusNames[] = {
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "N/A"),
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "Charging"),
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "Discharging"),
+    QT_TRANSLATE_NOOP("BatteryStatusTrayIcon", "Fully Charged"),
+};
+static_assert(std::size(batteryStatusNames) == BATT_STATUS_INVALID, "BatteryStatus and batteryStatusNames differ in length");
+
+static QString batteryStatusName(BatteryStatus status){
+    if(status >= BATT_STATUS_INVALID)
+        status = BATT_STATUS_UNKNOWN;
+    return QCoreApplication::translate("BatteryStatusTrayIcon", batteryStatusNames[status]);
+}
+
+QString DeviceController::batteryIconName() const {
+    if(!_batteryKnown)
+        return QStringLiteral("ckb-next-monochrome");
+    if(_device->currentBatteryStatus() == BATT_STATUS_CHARGING)
+        return QStringLiteral("ckb-next_battery_charging");
+    return QStringLiteral("ckb-next_battery_%1").arg(batteryLevelIndex(_device->currentBatteryLevel()));
+}
+
+QString DeviceController::batteryLevelText() const {
+    if(!_batteryKnown)
+        return QString();
+    const uint level = _device->currentBatteryLevel();
+    const QString name = QCoreApplication::translate("BatteryStatusTrayIcon", batteryLevelNames[batteryLevelIndex(level)]);
+    return QCoreApplication::translate("BatteryStatusTrayIcon", "Battery: %1 (%2%)").arg(name, QString::number(level));
+}
+
+QString DeviceController::batteryStatusText() const {
+    if(!_batteryKnown)
+        return QString();
+    return QCoreApplication::translate("BatteryStatusTrayIcon", "Status: %1").arg(batteryStatusName(_device->currentBatteryStatus()));
+}
+
+QString DeviceController::batteryToolTip() const {
+    if(!_batteryKnown)
+        return name();
+    return QStringLiteral("%1: %2, %3").arg(name(), batteryLevelText(), batteryStatusName(_device->currentBatteryStatus()));
 }
 
 bool DeviceController::showBatteryIndicator() const {

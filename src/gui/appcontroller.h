@@ -18,6 +18,8 @@ class AppController : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool tabsEnabled READ tabsEnabled NOTIFY tabsEnabledChanged)
+    Q_PROPERTY(bool trayVisible READ trayVisible NOTIFY trayVisibleChanged)
+    Q_PROPERTY(QString trayIconName READ trayIconName NOTIFY trayIconChanged)
 public:
     explicit AppController(QObject* parent = nullptr);
     ~AppController();
@@ -55,6 +57,8 @@ public:
     void setTrayVisible(bool visible);
     // The tray icon's image setting changed
     inline void refreshTrayIcon() { emit trayIconChanged(); }
+    // Tray image name under :/img/ and in the icon theme: colour or monochrome (Program/RGBIcon)
+    QString trayIconName() const;
 
     // True once quit() was called, so the main window lets Qt close it
     Q_INVOKABLE bool isQuitting() const { return _quitting; }

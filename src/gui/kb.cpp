@@ -324,7 +324,10 @@ void Kb::load(){
                 newCurrentProfile = profile;
         }
     }
-    _showBatteryIndicator = settings.value("batteryIndicator", true).toBool();
+    // Through the setter, so UIs bound to the setting see the loaded value
+    const bool showBattery = settings.value("batteryIndicator", true).toBool();
+    if(showBattery != _showBatteryIndicator)
+        setShowBatteryIndicator(showBattery);
     if(newCurrentProfile)
         setCurrentProfile(newCurrentProfile);
     else {

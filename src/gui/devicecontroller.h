@@ -18,6 +18,13 @@ class XWindowDetector;
 class DeviceController : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(QString name READ name CONSTANT)
+    Q_PROPERTY(bool hasBattery READ hasBattery CONSTANT)
+    Q_PROPERTY(bool showBatteryIndicator READ showBatteryIndicator WRITE setShowBatteryIndicator NOTIFY showBatteryIndicatorChanged)
+    Q_PROPERTY(QString batteryIconName READ batteryIconName NOTIFY batteryTextChanged)
+    Q_PROPERTY(QString batteryLevelText READ batteryLevelText NOTIFY batteryTextChanged)
+    Q_PROPERTY(QString batteryStatusText READ batteryStatusText NOTIFY batteryTextChanged)
+    Q_PROPERTY(QString batteryToolTip READ batteryToolTip NOTIFY batteryTextChanged)
 public:
     DeviceController(Kb* device, XWindowDetector* windowDetector, QObject* parent = nullptr);
 
@@ -82,9 +89,18 @@ public:
     // Apply and store the layout at index in layouts()
     void setLayout(int index);
 
+    // The device's short name, as shown on its tab and battery icon
+    QString name() const;
+
     bool hasBattery() const;
     bool showBatteryIndicator() const;
     void setShowBatteryIndicator(bool show);
+    // Battery tray icon: image name under :/img/ (the plain monochrome icon until the first
+    // reading), "Battery: <level> (<n>%)", "Status: <status>" and the tool tip
+    QString batteryIconName() const;
+    QString batteryLevelText() const;
+    QString batteryStatusText() const;
+    QString batteryToolTip() const;
 
     enum FirmwareCheck {
         FIRMWARE_CHECK_FAILED,
@@ -116,6 +132,8 @@ signals:
     void infoUpdated();
     // Only for devices with a battery
     void batteryChanged(uint level, BatteryStatus status);
+    void batteryTextChanged();
+    void showBatteryIndicatorChanged(bool show);
 
 private slots:
     void updateCurrentMode();
@@ -126,6 +144,8 @@ private:
     KbMode* _currentMode = nullptr;
     QList<QPair<int, QString>> _layouts;
     int _layoutIndex = -1;
+    // Whether the daemon has reported the battery yet
+    bool _batteryKnown = false;
     // Mode to return to when the focused window no longer matches any mode
     KbMode* prevmode = nullptr;
 };

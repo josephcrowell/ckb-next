@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls.Fusion
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import Qt.labs.platform as Platform
 import CkbNext
 
 // The main window: one tab per connected device, then Settings. Closing it only hides it;
@@ -68,6 +69,71 @@ ApplicationWindow {
         onActivated: AppController.quit()
     }
 
+    Platform.SystemTrayIcon {
+        visible: AppController.trayVisible
+        // The icon theme's image if it has one, else the built-in one
+        icon.name: AppController.trayIconName
+        icon.source: "qrc:/img/" + AppController.trayIconName + ".png"
+        menu: Platform.Menu {
+            Platform.MenuItem {
+                text: qsTranslate("MainWindow", "Restore")
+                onTriggered: root.showWindow()
+            }
+            Platform.MenuItem {
+                text: qsTranslate("MainWindow", "Quit")
+                onTriggered: AppController.quit()
+            }
+        }
+
+        // A click shows or hides the window; on macOS a click only opens the menu
+        onActivated: (reason) => {
+            if (Qt.platform.os === "osx")
+                return;
+            if (reason !== Platform.SystemTrayIcon.Trigger && reason !== Platform.SystemTrayIcon.DoubleClick)
+                return;
+            if (root.visible)
+                root.hide();
+            else
+                root.showWindow();
+        }
+        Component.onCompleted: {
+            if (!available)
+                console.warn("Main window: no system tray is available, so the tray icon can't be shown");
+        }
+    }
+
+    // A battery icon for each device that has a battery and the indicator turned on
+    Instantiator {
+        model: devices
+
+        delegate: Platform.SystemTrayIcon {
+            id: batteryIcon
+
+            required property DeviceController device
+
+            visible: device.hasBattery && device.showBatteryIndicator
+            icon.name: device.batteryIconName
+            icon.source: "qrc:/img/" + device.batteryIconName + ".png"
+            tooltip: device.batteryToolTip
+            menu: Platform.Menu {
+                Platform.MenuItem {
+                    text: batteryIcon.device.name
+                    enabled: false
+                }
+                Platform.MenuSeparator {
+                }
+                Platform.MenuItem {
+                    text: batteryIcon.device.batteryLevelText
+                    enabled: false
+                }
+                Platform.MenuItem {
+                    text: batteryIcon.device.batteryStatusText
+                    enabled: false
+                }
+            }
+        }
+    }
+
     MessageDialog {
         id: backgroundWarning
 
@@ -108,7 +174,7 @@ ApplicationWindow {
 
             // Device page, filled in from step 2.5
             Item {
-                required property QtObject device
+                required property DeviceController device
             }
         }
         // Settings page, filled in from step 2.6
