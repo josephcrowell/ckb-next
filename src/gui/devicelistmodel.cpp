@@ -46,9 +46,13 @@ QHash<int, QByteArray> DeviceListModel::roleNames() const {
 void DeviceListModel::addDevice(Kb* device){
     if(rowOf(device) >= 0)
         return;
+    DeviceController* controller = new DeviceController(device, AppController::instance()->windowDetector(), this);
+    // As KbWidget's constructor; kbConnected comes before the device loads its profile, whose
+    // animations and bindings need the key layout
+    controller->setupLayout();
     const int row = _controllers.count();
     beginInsertRows(QModelIndex(), row, row);
-    _controllers.append(new DeviceController(device, AppController::instance()->windowDetector(), this));
+    _controllers.append(controller);
     endInsertRows();
 }
 
