@@ -10,6 +10,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFileInfo>
+#include <QMessageBox>
 #include <QProcess>
 #include <QSharedMemory>
 #include <QSocketNotifier>
@@ -104,6 +105,14 @@ bool AppController::backgroundWarningShown() const {
 
 void AppController::setBackgroundWarningShown(){
     CkbSettings::set("Popups/BGWarning", true);
+}
+
+QString AppController::versionText() const {
+    return QStringLiteral("ckb-next ") + KbManager::ckbGuiVersion().toString();
+}
+
+void AppController::aboutQt(){
+    QMessageBox::aboutQt(nullptr);
 }
 
 void AppController::autoCheckForUpdates(){

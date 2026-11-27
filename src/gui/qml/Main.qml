@@ -191,8 +191,7 @@ ApplicationWindow {
                 visible: index === tabBar.currentIndex
             }
         }
-        // Settings page, filled in from step 2.6
-        Item {
+        SettingsPage {
             anchors.fill: parent
             visible: tabBar.currentIndex === devicePages.count
         }

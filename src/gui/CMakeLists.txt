@@ -340,6 +340,7 @@ if (CKB_NEXT_QML_UI)
               qml/Main.qml
               qml/ModeEventManager.qml
               qml/ModeList.qml
+              qml/SettingsPage.qml
             SOURCES
               devicelistmodel.cpp
               devicelistmodel.h

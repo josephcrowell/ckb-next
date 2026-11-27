@@ -12,6 +12,11 @@ class QProcess;
 class SettingsController : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(QString copyrightText READ copyrightText CONSTANT)
+    Q_PROPERTY(QStringList modifierNames READ modifierNames CONSTANT)
+    Q_PROPERTY(bool autoFirmwareCheck READ autoFirmwareCheck WRITE setAutoFirmwareCheck NOTIFY autoFirmwareCheckChanged)
+    Q_PROPERTY(bool updaterAvailable READ updaterAvailable CONSTANT)
+    Q_PROPERTY(bool autoUpdateCheck READ autoUpdateCheck WRITE setAutoUpdateCheck NOTIFY autoUpdateCheckChanged)
 public:
     explicit SettingsController(QObject* parent = nullptr);
 
@@ -21,9 +26,9 @@ public:
     // of the modifiers, by index in modifierNames(). The right-hand keys follow the left ones.
     static QStringList modifierNames();
     // The index the key is mapped to, or -1 if it isn't mapped to a modifier
-    int modifierIndex(const QString& key) const;
+    Q_INVOKABLE int modifierIndex(const QString& key) const;
     // Indices for caps, shift, ctrl, alt and win; saved at once
-    void setModifiers(int caps, int shift, int ctrl, int alt, int win);
+    Q_INVOKABLE void setModifiers(int caps, int shift, int ctrl, int alt, int win);
 #ifdef Q_OS_MACOS
     // ckb <0.0.41 stored a Command/Control swap; it's turned into the remap once. Returns
     // whether that happened (the UI then reloads the indices).
@@ -32,6 +37,8 @@ public:
 
     bool autoFirmwareCheck() const;
     void setAutoFirmwareCheck(bool enabled);
+    // False when built with DISABLE_UPDATER (distribution packages)
+    static bool updaterAvailable();
     bool autoUpdateCheck() const;
     void setAutoUpdateCheck(bool enabled);
     // Qt 5.6 to 5.15 only; takes effect after a restart
@@ -96,6 +103,8 @@ public:
 #endif
 
 signals:
+    void autoFirmwareCheckChanged();
+    void autoUpdateCheckChanged();
     // ok: the script succeeded and wrote its report; otherwise errorOutput and exitCode tell why
     void reportFinished(bool ok, const QString& errorOutput, int exitCode);
 

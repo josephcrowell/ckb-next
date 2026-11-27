@@ -20,6 +20,8 @@ class AppController : public QObject
     Q_PROPERTY(bool tabsEnabled READ tabsEnabled NOTIFY tabsEnabledChanged)
     Q_PROPERTY(bool trayVisible READ trayVisible NOTIFY trayVisibleChanged)
     Q_PROPERTY(QString trayIconName READ trayIconName NOTIFY trayIconChanged)
+    Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    Q_PROPERTY(QString versionText READ versionText CONSTANT)
 public:
     explicit AppController(QObject* parent = nullptr);
     ~AppController();
@@ -36,6 +38,10 @@ public:
     // Returns false and sets the status text if the daemon isn't running (unless silent)
     bool checkDaemon(bool silent);
     inline QString statusText() const { return _statusText; }
+    // "ckb-next <version>", as on the Settings tab
+    QString versionText() const;
+    // Qt's own about box (a QMessageBox: QML has none)
+    Q_INVOKABLE void aboutQt();
     // Connected devices in the order they were connected
     inline const QList<Kb*>& devices() const { return _devices; }
     // Firmware update prompts are only offered while this returns true (main window visible)

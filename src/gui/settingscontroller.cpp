@@ -145,6 +145,15 @@ bool SettingsController::autoFirmwareCheck() const {
 
 void SettingsController::setAutoFirmwareCheck(bool enabled){
     CkbSettings::set("Program/DisableAutoFWCheck", !enabled);
+    emit autoFirmwareCheckChanged();
+}
+
+bool SettingsController::updaterAvailable(){
+#ifdef DISABLE_UPDATER
+    return false;
+#else
+    return true;
+#endif
 }
 
 bool SettingsController::autoUpdateCheck() const {
@@ -153,6 +162,7 @@ bool SettingsController::autoUpdateCheck() const {
 
 void SettingsController::setAutoUpdateCheck(bool enabled){
     CkbSettings::set("Program/DisableAutoUpdCheck", !enabled);
+    emit autoUpdateCheckChanged();
 }
 
 bool SettingsController::hiDpi() const {

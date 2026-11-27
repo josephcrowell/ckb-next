@@ -7,6 +7,7 @@
 #include <QtQml/qqmlregistration.h>
 #include "appcontroller.h"
 #include "kbmanager.h"
+#include "settingscontroller.h"
 
 // The application-wide objects as QML singletons. They are created in C++ before the QML
 // is loaded and outlive the engine, so the engine must not take ownership of them. Only one
@@ -43,6 +44,20 @@ struct KbManagerForeign
 public:
     static KbManager* create(QQmlEngine*, QJSEngine* engine){
         return qmlSingleton(KbManager::kbManager(), engine);
+    }
+};
+
+// The QML app's settings controller; main() sets it before loading the QML
+struct SettingsControllerForeign
+{
+    Q_GADGET
+    QML_FOREIGN(SettingsController)
+    QML_SINGLETON
+    QML_NAMED_ELEMENT(Settings)
+public:
+    inline static SettingsController* instance = nullptr;
+    static SettingsController* create(QQmlEngine*, QJSEngine* engine){
+        return qmlSingleton(instance, engine);
     }
 };
 

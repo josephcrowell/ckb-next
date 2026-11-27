@@ -26,6 +26,8 @@
 #include "appcontroller.h"
 #include "ckbsettings.h"
 #include "keyaction.h"
+#include "qmlsingletons.h"
+#include <QTimer>
 #endif
 
 QSharedMemory appShare("ckb-next");
@@ -505,6 +507,14 @@ int main(int argc, char* argv[]){
 #ifdef CKB_NEXT_QML_UI
     AppController app;
     app.init();
+    // Applies the stored settings before any device is set up, as the Widgets Settings tab
+    // does; then saves the shared brightness on the app's timer, after AppController's tick
+    SettingsController settings;
+    SettingsControllerForeign::instance = &settings;
+#ifdef Q_OS_MACOS
+    settings.migrateCmdSwap();
+#endif
+    QObject::connect(KbManager::scanTimer(), &QTimer::timeout, &settings, &SettingsController::pollUpdates);
     app.setTrayVisible(!CkbSettings::get("Program/SuppressTrayIcon").toBool());
     engine->setInitialProperties({{"startHidden", background}});
     engine->loadFromModule("CkbNext", "Main");
