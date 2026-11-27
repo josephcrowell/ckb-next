@@ -7,6 +7,8 @@
 #include <QHash>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QTextDocumentFragment>
+#include <QVariantMap>
 #include <ckbnextconfig.h>
 #include "animscript.h"
 #include "appcontroller.h"
@@ -77,6 +79,8 @@ SettingsController::SettingsController(QObject* parent) : QObject(parent)
 
     // Read dither
     Kb::dither(settings.value("Dither").toBool());
+
+    _msaaDisabled = settings.contains("GL/MSAA") && settings.value("GL/MSAA").toInt() == 0;
 
 #if defined(Q_OS_MACOS) && defined(OS_MAC_LEGACY)
     // Read OSX settings
@@ -178,6 +182,7 @@ void SettingsController::setFrameRate(int rate){
     CkbSettings settings("Program");
     settings.setValue("framerate", rate);
     Kb::frameRate(rate);
+    emit frameRateChanged();
 }
 
 bool SettingsController::perModeBrightness() const {
@@ -188,6 +193,7 @@ bool SettingsController::perModeBrightness() const {
 void SettingsController::setPerModeBrightness(bool enabled){
     KbLight::shareDimming(enabled ? -1 : 0);
     pollUpdates();
+    emit perModeBrightnessChanged();
 }
 
 void SettingsController::pollUpdates(){
@@ -207,6 +213,7 @@ bool SettingsController::dither() const {
 void SettingsController::setDither(bool enabled){
     CkbSettings::set("Program/Dither", enabled);
     Kb::dither(enabled);
+    emit ditherChanged();
 }
 
 bool SettingsController::trayIconSuppressed() const {
@@ -216,6 +223,7 @@ bool SettingsController::trayIconSuppressed() const {
 void SettingsController::setTrayIconSuppressed(bool suppressed){
     CkbSettings::set("Program/SuppressTrayIcon", suppressed);
     AppController::instance()->setTrayVisible(!suppressed);
+    emit trayIconSuppressedChanged();
 }
 
 bool SettingsController::monochromeTrayIcon() const {
@@ -225,6 +233,7 @@ bool SettingsController::monochromeTrayIcon() const {
 void SettingsController::setMonochromeTrayIcon(bool monochrome){
     CkbSettings::set("Program/RGBIcon", !monochrome);
     AppController::instance()->refreshTrayIcon();
+    emit monochromeTrayIconChanged();
 }
 
 bool SettingsController::startDelay() const {
@@ -233,6 +242,7 @@ bool SettingsController::startDelay() const {
 
 void SettingsController::setStartDelay(bool enabled){
     CkbSettings::set("Program/StartDelay", enabled);
+    emit startDelayChanged();
 }
 
 bool SettingsController::disablePreviewOnFocusLoss() const {
@@ -241,19 +251,17 @@ bool SettingsController::disablePreviewOnFocusLoss() const {
 
 void SettingsController::setDisablePreviewOnFocusLoss(bool disabled){
     CkbSettings::set("Program/DisablePreviewOnFocusLoss", disabled);
-}
-
-bool SettingsController::msaaDisabled() const {
-    CkbSettings settings("Program");
-    return settings.contains("GL/MSAA") && settings.value("GL/MSAA").toInt() == 0;
+    emit disablePreviewOnFocusLossChanged();
 }
 
 void SettingsController::setMsaaDisabled(bool disabled){
+    _msaaDisabled = disabled;
     CkbSettings s("Program/GL");
     if(disabled)
         s.setValue("MSAA", 0);
     else
         s.remove("MSAA");
+    emit msaaDisabledChanged();
 }
 
 bool SettingsController::idleTimerSupported(){
@@ -272,6 +280,7 @@ void SettingsController::setIdleTimerEnabled(bool enabled){
 #ifdef Q_OS_LINUX
     CkbSettings::set("Program/IdleTimerEnable", enabled);
     KbManager::setIdleTimer(enabled);
+    emit idleTimerEnabledChanged();
 #else
     Q_UNUSED(enabled);
 #endif
@@ -286,6 +295,7 @@ void SettingsController::setIdleTimerDuration(int minutes){
     CkbSettings::set("Program/IdleTimerDuration", minutes);
     KbManager::setIdleTimer(false);
     KbManager::setIdleTimer(true);
+    emit idleTimerDurationChanged();
 #else
     Q_UNUSED(minutes);
 #endif
@@ -330,10 +340,29 @@ QString SettingsController::rescanAnimations(){
     AnimScript::scan();
     int count = AnimScript::count();
     if(count == 0)
-        return QCoreApplication::translate("ExtraSettingsWidget", "No animations found");
+        _animationCountText = QCoreApplication::translate("ExtraSettingsWidget", "No animations found");
     else if(count == 1)
-        return QCoreApplication::translate("ExtraSettingsWidget", "1 animation found");
-    return QCoreApplication::translate("ExtraSettingsWidget", "%1 animations found").arg(count);
+        _animationCountText = QCoreApplication::translate("ExtraSettingsWidget", "1 animation found");
+    else
+        _animationCountText = QCoreApplication::translate("ExtraSettingsWidget", "%1 animations found").arg(count);
+    emit animationsScanned();
+    return _animationCountText;
+}
+
+QVariantList SettingsController::animationDetails() const {
+    QVariantList list;
+    foreach(const AnimScript* script, AnimScript::list()){
+        list.append(QVariantMap{
+            {"name", script->name()},
+            {"path", script->path()},
+            {"version", script->version()},
+            {"author", script->author()},
+            {"year", script->year()},
+            {"license", script->license()},
+            {"description", QTextDocumentFragment::fromHtml(script->description()).toPlainText()},
+        });
+    }
+    return list;
 }
 
 bool SettingsController::startReport(){

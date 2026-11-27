@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QVariantList>
 
 class QProcess;
 
@@ -17,6 +18,20 @@ class SettingsController : public QObject
     Q_PROPERTY(bool autoFirmwareCheck READ autoFirmwareCheck WRITE setAutoFirmwareCheck NOTIFY autoFirmwareCheckChanged)
     Q_PROPERTY(bool updaterAvailable READ updaterAvailable CONSTANT)
     Q_PROPERTY(bool autoUpdateCheck READ autoUpdateCheck WRITE setAutoUpdateCheck NOTIFY autoUpdateCheckChanged)
+    Q_PROPERTY(bool trayIconSuppressed READ trayIconSuppressed WRITE setTrayIconSuppressed NOTIFY trayIconSuppressedChanged)
+    Q_PROPERTY(bool monochromeTrayIcon READ monochromeTrayIcon WRITE setMonochromeTrayIcon NOTIFY monochromeTrayIconChanged)
+    Q_PROPERTY(bool perModeBrightness READ perModeBrightness WRITE setPerModeBrightness NOTIFY perModeBrightnessChanged)
+    Q_PROPERTY(bool startDelay READ startDelay WRITE setStartDelay NOTIFY startDelayChanged)
+    Q_PROPERTY(bool disablePreviewOnFocusLoss READ disablePreviewOnFocusLoss WRITE setDisablePreviewOnFocusLoss NOTIFY disablePreviewOnFocusLossChanged)
+    Q_PROPERTY(bool msaaDisabled READ msaaDisabled WRITE setMsaaDisabled NOTIFY msaaDisabledChanged)
+    Q_PROPERTY(bool idleTimerSupported READ idleTimerSupported CONSTANT)
+    Q_PROPERTY(bool idleTimerEnabled READ idleTimerEnabled WRITE setIdleTimerEnabled NOTIFY idleTimerEnabledChanged)
+    Q_PROPERTY(int idleTimerDuration READ idleTimerDuration WRITE setIdleTimerDuration NOTIFY idleTimerDurationChanged)
+    Q_PROPERTY(int frameRate READ frameRate WRITE setFrameRate NOTIFY frameRateChanged)
+    Q_PROPERTY(bool showFrameRateWarning READ showFrameRateWarning NOTIFY frameRateChanged)
+    Q_PROPERTY(bool dither READ dither WRITE setDither NOTIFY ditherChanged)
+    Q_PROPERTY(QString animationPaths READ animationPaths CONSTANT)
+    Q_PROPERTY(QString animationCountText READ animationCountText NOTIFY animationsScanned)
 public:
     explicit SettingsController(QObject* parent = nullptr);
 
@@ -49,6 +64,7 @@ public:
     inline int frameRate() const { return _frameRate; }
     void setFrameRate(int rate);
     static inline bool frameRateWarning(int rate) { return rate > 30; }
+    inline bool showFrameRateWarning() const { return frameRateWarning(_frameRate); }
     // Brightness per mode instead of shared by all devices
     bool perModeBrightness() const;
     void setPerModeBrightness(bool enabled);
@@ -64,7 +80,8 @@ public:
     void setStartDelay(bool enabled);
     bool disablePreviewOnFocusLoss() const;
     void setDisablePreviewOnFocusLoss(bool disabled);
-    bool msaaDisabled() const;
+    // As read on load: CkbSettings writes this one later, from another thread
+    inline bool msaaDisabled() const { return _msaaDisabled; }
     void setMsaaDisabled(bool disabled);
     // Idle timer (Linux): unsupported compositors can't use it
     static bool idleTimerSupported();
@@ -83,7 +100,12 @@ public:
 
     // Animations: the folders searched and a new scan (returns the "N animations found" text)
     static QString animationPaths();
-    QString rescanAnimations();
+    Q_INVOKABLE QString rescanAnimations();
+    // The text of the last scan, empty before the first
+    inline QString animationCountText() const { return _animationCountText; }
+    // One map per loaded script: name, path, version, author, year, license and the
+    // description as plain text (the details dialog's columns)
+    Q_INVOKABLE QVariantList animationDetails() const;
 
     // Report: startReport() runs ckb-next-dev-detect (false if it couldn't be started), then
     // reportFinished() follows. On success the UI asks for a folder, calls saveReport() and,
@@ -105,6 +127,17 @@ public:
 signals:
     void autoFirmwareCheckChanged();
     void autoUpdateCheckChanged();
+    void trayIconSuppressedChanged();
+    void monochromeTrayIconChanged();
+    void perModeBrightnessChanged();
+    void startDelayChanged();
+    void disablePreviewOnFocusLossChanged();
+    void msaaDisabledChanged();
+    void idleTimerEnabledChanged();
+    void idleTimerDurationChanged();
+    void frameRateChanged();
+    void ditherChanged();
+    void animationsScanned();
     // ok: the script succeeded and wrote its report; otherwise errorOutput and exitCode tell why
     void reportFinished(bool ok, const QString& errorOutput, int exitCode);
 
@@ -115,9 +148,11 @@ private:
     int _lastSharedDimming = -2;
     int _scrollSpeedValue = 3;
     bool _scrollAccelDisabled = false;
+    bool _msaaDisabled = false;
     QProcess* _devDetect = nullptr;
     QString _reportFolder;
     QString _savedReport;
+    QString _animationCountText;
 };
 
 #endif // SETTINGSCONTROLLER_H

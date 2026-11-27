@@ -175,7 +175,173 @@ Pane {
                     checked: Settings.autoUpdateCheck
                     onClicked: Settings.autoUpdateCheck = checked
                 }
-                // Generate report (2.6c), updates (2.6d) and the Behavior settings (2.6b)
+                // Generate report (2.6c) and updates (2.6d) go here
+
+                SectionTitle {
+                    text: qsTranslate("ExtraSettingsWidget", "Behavior")
+                }
+                ColumnLayout {
+                    Layout.leftMargin: 6
+                    spacing: 6
+
+                    CheckBox {
+                        text: qsTranslate("ExtraSettingsWidget", "Hide tray icon")
+                        checked: Settings.trayIconSuppressed
+                        onClicked: Settings.trayIconSuppressed = checked
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 700
+                        ToolTip.text: qsTranslate("ExtraSettingsWidget", "The tray icon will not be displayed. The application will still run in the background; re-launch the app to see the GUI again.")
+                    }
+                    CheckBox {
+                        text: qsTranslate("ExtraSettingsWidget", "Monochrome tray icon")
+                        checked: Settings.monochromeTrayIcon
+                        onClicked: Settings.monochromeTrayIcon = checked
+                    }
+                    CheckBox {
+                        text: qsTranslate("ExtraSettingsWidget", "Set brightness per-mode")
+                        checked: Settings.perModeBrightness
+                        onClicked: Settings.perModeBrightness = checked
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 700
+                        ToolTip.text: qsTranslate("ExtraSettingsWidget", "By default, the same brightness level will be applied to all profiles and all devices. Enable this to store it with the lighting mode instead.")
+                    }
+                    Label {
+                        visible: Qt.platform.os === "linux"
+                        text: qsTranslate("ExtraSettingsWidget", "Enabling per-mode brightness will disable scrolling on the tray icon to change the brightness level")
+                        font.italic: true
+                        font.pointSize: Application.font.pointSize * 0.8
+                    }
+                    CheckBox {
+                        text: qsTranslate("ExtraSettingsWidget", "Delay application start")
+                        checked: Settings.startDelay
+                        onClicked: Settings.startDelay = checked
+                    }
+                    CheckBox {
+                        text: qsTranslate("ExtraSettingsWidget", "Disable animated preview when ckb-next is not in focus")
+                        checked: Settings.disablePreviewOnFocusLoss
+                        onClicked: Settings.disablePreviewOnFocusLoss = checked
+                    }
+                    CheckBox {
+                        text: qsTranslate("ExtraSettingsWidget", "Disable Anti Aliasing (Requires restart)")
+                        checked: Settings.msaaDisabled
+                        onClicked: Settings.msaaDisabled = checked
+                    }
+                    // Linux only; a disabled control gets no hover, so the row shows why
+                    RowLayout {
+                        visible: Qt.platform.os === "linux"
+                        spacing: 6
+                        ToolTip.visible: !Settings.idleTimerSupported && idleHover.hovered
+                        ToolTip.text: qsTranslate("ExtraSettingsWidget", "This feature is not supported under your current compositor")
+
+                        HoverHandler {
+                            id: idleHover
+                        }
+                        CheckBox {
+                            id: idleBox
+
+                            enabled: Settings.idleTimerSupported
+                            text: qsTranslate("ExtraSettingsWidget", "Turn lights off when idle for")
+                            checked: Settings.idleTimerSupported && Settings.idleTimerEnabled
+                            onClicked: Settings.idleTimerEnabled = checked
+                        }
+                        SpinBox {
+                            enabled: idleBox.enabled && idleBox.checked
+                            editable: true
+                            from: 1
+                            to: 99
+                            value: Settings.idleTimerDuration
+                            textFromValue: (value) => value + qsTranslate("ExtraSettingsWidget", "m", "minutes")
+                            valueFromText: (text) => parseInt(text)
+                            onValueModified: Settings.idleTimerDuration = value
+                        }
+                    }
+                }
+
+                SectionTitle {
+                    text: qsTranslate("ExtraSettingsWidget", "Animation scripts")
+                }
+                RowLayout {
+                    Layout.leftMargin: 6
+                    spacing: 6
+
+                    Label {
+                        Layout.alignment: Qt.AlignTop
+                        Layout.preferredWidth: 140
+                        text: qsTranslate("ExtraSettingsWidget", "Location:")
+                    }
+                    Label {
+                        Layout.alignment: Qt.AlignTop
+                        Layout.fillWidth: true
+                        text: Settings.animationPaths
+                        elide: Text.ElideMiddle
+                    }
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignTop
+                        Layout.fillWidth: false
+
+                        Label {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: Settings.animationCountText
+                        }
+                        RowLayout {
+                            Button {
+                                text: qsTranslate("ExtraSettingsWidget", "Re-scan")
+                                onClicked: Settings.rescanAnimations()
+                            }
+                            Button {
+                                text: qsTranslate("ExtraSettingsWidget", "Details")
+                                onClicked: detailsLoader.active = true
+                            }
+                        }
+                    }
+                }
+
+                SectionTitle {
+                    text: qsTranslate("ExtraSettingsWidget", "Hardware")
+                }
+                ColumnLayout {
+                    Layout.leftMargin: 6
+                    spacing: 6
+
+                    RowLayout {
+                        spacing: 6
+
+                        Label {
+                            Layout.preferredWidth: 140
+                            text: qsTranslate("ExtraSettingsWidget", "Frame rate (FPS):")
+                        }
+                        SpinBox {
+                            editable: true
+                            from: 5
+                            to: 60
+                            value: Settings.frameRate
+                            onValueModified: Settings.frameRate = value
+                        }
+                        Label {
+                            visible: Settings.showFrameRateWarning
+                            text: qsTranslate("ExtraSettingsWidget", "Warning: high frame rates may cause stability issues")
+                        }
+                    }
+                    CheckBox {
+                        text: qsTranslate("ExtraSettingsWidget", "Use spatial dithering to simulate extra color resolution")
+                        checked: Settings.dither
+                        onClicked: Settings.dither = checked
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 700
+                        ToolTip.text: qsTranslate("ExtraSettingsWidget", "May improve appearance on some keyboards.")
+                    }
+                }
+            }
+        }
+
+        // A new window for each opening, so it lists the scripts of the latest scan
+        Loader {
+            id: detailsLoader
+
+            active: false
+            sourceComponent: AnimationDetails {
+                visible: true
+                onClosing: Qt.callLater(() => detailsLoader.active = false)
             }
         }
 

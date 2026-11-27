@@ -514,6 +514,8 @@ int main(int argc, char* argv[]){
 #ifdef Q_OS_MACOS
     settings.migrateCmdSwap();
 #endif
+    // Devices look their animations' scripts up in this list (the Widgets tab scans when built)
+    settings.rescanAnimations();
     QObject::connect(KbManager::scanTimer(), &QTimer::timeout, &settings, &SettingsController::pollUpdates);
     app.setTrayVisible(!CkbSettings::get("Program/SuppressTrayIcon").toBool());
     engine->setInitialProperties({{"startHidden", background}});

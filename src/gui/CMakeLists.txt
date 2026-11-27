@@ -335,6 +335,7 @@ if (CKB_NEXT_QML_UI)
         ckb-next
             URI CkbNext
             QML_FILES
+              qml/AnimationDetails.qml
               qml/DevicePage.qml
               qml/DowngradeWarning.qml
               qml/Main.qml
